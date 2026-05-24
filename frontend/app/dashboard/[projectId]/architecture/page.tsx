@@ -112,8 +112,4 @@ export default function ArchitecturePage() {
       </div>
     </div>
   );
-}export default function ArchitecturePage() {
-  return (
-    <main className="section"><div className="container"><div className="panel pad">Architecture analysis view coming here.</div></div></main>
-  );
 }

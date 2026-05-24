@@ -6,8 +6,4 @@ export function Card({ children, style }: { children: ReactNode; style?: React.C
       {children}
     </div>
   );
-}import type { ReactNode } from "react";
-
-export function Card({ children }: { children: ReactNode }) {
-  return <div className="panel pad">{children}</div>;
 }

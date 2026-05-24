@@ -25,6 +25,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     }
   }, [token, setToken, setUser, logout, router]);
 
+  if (typeof window === "undefined") return null;
   if (!token && !sessionStorage.getItem("codesage_token")) return null;
 
   return (

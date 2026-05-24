@@ -23,7 +23,7 @@ function TreeBranch({ node }: { node: TreeNode }) {
           </span>
         )}
       </div>
-      {node.dependents?.length > 0 && (
+      {Array.isArray(node.dependents) && node.dependents.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
           {node.dependents.map((child, index) => <TreeBranch key={`${label}-${index}`} node={child} />)}
         </div>

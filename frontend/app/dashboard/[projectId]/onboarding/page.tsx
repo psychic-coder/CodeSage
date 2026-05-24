@@ -130,8 +130,4 @@ export default function OnboardingPage() {
       )}
     </div>
   );
-}export default function OnboardingPage() {
-  return (
-    <main className="section"><div className="container"><div className="panel pad">Onboarding guide view coming here.</div></div></main>
-  );
 }

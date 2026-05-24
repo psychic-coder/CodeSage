@@ -119,8 +119,4 @@ export default function ImprovementsPage() {
       </div>
     </div>
   );
-}export default function ImprovementsPage() {
-  return (
-    <main className="section"><div className="container"><div className="panel pad">Improvement suggestions view coming here.</div></div></main>
-  );
 }

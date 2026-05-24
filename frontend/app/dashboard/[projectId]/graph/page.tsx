@@ -67,7 +67,7 @@ export default function GraphPage() {
   const flowNodes: Node[] = useMemo(() => filtered.map((n, i) => ({
     id: n.path, type: "file",
     position: { x: (i % 15) * 200, y: Math.floor(i / 15) * 120 },
-    data: { label: n.name || n.path.split("/").pop(), language: n.language, risk_score: n.risk_score, ...n },
+    data: { ...n, label: n.name || n.path.split("/").pop(), risk_score: n.risk_score },
   })), [filtered]);
 
   const flowEdges: Edge[] = useMemo(() => rawEdges
@@ -81,7 +81,7 @@ export default function GraphPage() {
   const [nodes, , onNodesChange] = useNodesState(flowNodes);
   const [edges, , onEdgesChange] = useEdgesState(flowEdges);
 
-  const languages = useMemo(() => [...new Set(rawNodes.map(n => n.language).filter(Boolean))], [rawNodes]);
+  const languages = useMemo(() => Array.from(new Set(rawNodes.map(n => n.language).filter(Boolean))), [rawNodes]);
 
   const onNodeClick = useCallback((_: any, node: Node) => {
     const raw = rawNodes.find(n => n.path === node.id);

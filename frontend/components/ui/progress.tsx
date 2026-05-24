@@ -4,10 +4,4 @@ export function Progress({ value = 0 }: { value?: number }) {
       <div style={{ width: `${Math.max(0, Math.min(100, value))}%`, height: "100%", background: "var(--color-primary)" }} />
     </div>
   );
-}export function Progress({ value = 0 }: { value?: number }) {
-  return (
-    <div className="panel" style={{ overflow: "hidden" }}>
-      <div style={{ height: 8, width: `${value}%`, background: "var(--color-primary)" }} />
-    </div>
-  );
 }
