@@ -12,4 +12,8 @@ declare module '*.jpeg';
 declare module '*.gif';
 declare module '*.svg';
 
+// Explicit ReactFlow CSS declarations (side-effect imports)
+declare module 'reactflow/dist/style.css';
+declare module 'reactflow/dist/base.css';
+
 export {};
