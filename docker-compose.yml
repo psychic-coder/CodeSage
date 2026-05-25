@@ -1,9 +1,8 @@
-version: '3.9'
 services:
   backend:
     build: ./backend
     ports: ["8000:8000"]
-    env_file: .env
+    env_file: .env.docker
     depends_on: [postgres, neo4j, qdrant, redis, minio]
     volumes:
       - ./backend:/app
@@ -11,14 +10,14 @@ services:
 
   worker:
     build: ./backend
-    env_file: .env
+    env_file: .env.docker
     depends_on: [postgres, neo4j, qdrant, redis, minio]
     command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=4
 
   frontend:
     build: ./frontend
     ports: ["3000:3000"]
-    env_file: .env
+    env_file: .env.docker
     depends_on: [backend]
 
   postgres:
