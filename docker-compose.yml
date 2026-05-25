@@ -28,7 +28,8 @@ services:
       POSTGRES_PASSWORD: pass
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports: ["5432:5432"]
+    # Host port changed from 5432 to 5433 to avoid conflicts with local Postgres
+    ports: ["5433:5432"]
 
   neo4j:
     image: neo4j:5.18
