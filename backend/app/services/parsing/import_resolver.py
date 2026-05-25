@@ -1,6 +1,6 @@
 import os
 
-EXTS = ['.js', '.ts', '.jsx', '.tsx', '.py', '.mjs']
+EXTS = ['.js', '.ts', '.jsx', '.tsx', '.py', '.mjs', '.html', '.htm']
 
 
 def resolve_all_imports(parsed_files: list[dict], repo_root: str) -> list[dict]:
