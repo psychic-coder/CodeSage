@@ -52,8 +52,8 @@ export default function GraphPage() {
     queryFn: () => graphAPI.edges(projectId, 0, 1000),
   });
 
-  const rawNodes: GraphNode[] = nodesData?.data || [];
-  const rawEdges: GraphEdge[] = edgesData?.data || [];
+  const rawNodes: GraphNode[] = useMemo(() => nodesData?.data ?? [], [nodesData]);
+  const rawEdges: GraphEdge[] = useMemo(() => edgesData?.data ?? [], [edgesData]);
 
   const filtered = useMemo(() => {
     let nodes = rawNodes;
