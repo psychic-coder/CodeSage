@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     minio_bucket: str = "codesage-repos"
 
     openai_api_key: str = "sk-..."
+    openrouter_api_key: str = ""
+    openrouter_base_url: str = "https://openrouter.ai"
     llm_model: str = "gpt-4o"
     embedding_model: str = "text-embedding-3-small"
 
