@@ -1,5 +1,5 @@
 "use client";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -14,8 +14,10 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const { user, token, setUser, setToken, logout } = useAppStore();
   const router = useRouter();
   const pathname = usePathname();
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     const saved = sessionStorage.getItem("codesage_token");
     if (saved && !token) {
       setToken(saved);
@@ -25,8 +27,13 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     }
   }, [token, setToken, setUser, logout, router]);
 
-  if (typeof window === "undefined") return null;
-  if (!token && !sessionStorage.getItem("codesage_token")) return null;
+  if (!mounted) {
+    return <div style={{ minHeight: "100dvh", background: "var(--color-bg)" }} />;
+  }
+
+  if (!token) {
+    return <div style={{ minHeight: "100dvh", background: "var(--color-bg)" }} />;
+  }
 
   return (
     <div style={{ display: "flex", minHeight: "100dvh" }}>
