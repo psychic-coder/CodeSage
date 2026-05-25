@@ -34,6 +34,8 @@ def parse_file(file_path: str, repo_root: str) -> dict | None:
     try:
         if lang in ("javascript", "typescript"):
             _parse_js(source, result)
+        elif lang == "html":
+            _parse_html(source, result)
         elif lang == "python":
             _parse_py(source, result)
     except Exception:
@@ -61,3 +63,17 @@ def _parse_py(src: str, r: dict):
     for m in re.finditer(r'^class\s+(\w+)', src, re.MULTILINE):
         r["classes"].append({"name": m.group(1)})
     r["complexity"] = len(re.findall(r'\b(if|elif|else|for|while|except|and|or)\b', src)) + 1
+
+
+def _parse_html(src: str, r: dict):
+    # Treat local HTML asset references as graph edges so portfolio/static sites still produce useful structure.
+    for m in re.finditer(r'<(?:script|link|iframe|source)\b[^>]*(?:src|href)=\s*["\']([^"\']+)["\']', src, re.IGNORECASE):
+        r["imports"].append(m.group(1))
+
+    for m in re.finditer(r'<title>(.*?)</title>', src, re.IGNORECASE | re.DOTALL):
+        title = re.sub(r'\s+', ' ', m.group(1)).strip()
+        if title:
+            r["exports"].append(title)
+
+    # HTML pages are treated as low-complexity entry files by default.
+    r["complexity"] = len(re.findall(r'<(?!/)(?!meta\b)(?!link\b)(?!img\b)[a-zA-Z][^>]*>', src)) + 1

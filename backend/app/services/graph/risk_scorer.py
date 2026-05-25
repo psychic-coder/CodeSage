@@ -9,8 +9,8 @@ async def score_all_nodes(project_id: str):
         result = await session.run(
             "MATCH (f:File {project_id: $pid}) "
             "WITH f, "
-            "  size((f)<-[:IMPORTS]-()) AS in_deg, "
-            "  size((f)-[:IMPORTS]->()) AS out_deg "
+            "  COUNT { (f)<-[:IMPORTS]-() } AS in_deg, "
+            "  COUNT { (f)-[:IMPORTS]->() } AS out_deg "
             "RETURN f.path AS path, f.complexity_score AS complexity, in_deg, out_deg",
             pid=project_id
         )

@@ -39,8 +39,7 @@ async def _update_project_status(project_id: str, status: str, file_count: int =
         if project:
             project.status = status
             project.total_files = file_count
-            if error:
-                project.error_message = error
+            project.error_message = error
             await db.commit()
 
 
