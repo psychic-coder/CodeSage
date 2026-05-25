@@ -49,6 +49,14 @@ Set these only if you need GitHub-backed features:
 - `GITHUB_CLIENT_SECRET`
 - `GITHUB_PERSONAL_TOKEN`
 
+### GitHub OAuth setup
+
+1. Create a GitHub OAuth App in GitHub settings.
+2. Set the homepage URL to `http://localhost:3000`.
+3. Set the authorization callback URL to `http://localhost:3000/api/auth/callback/github`.
+4. Copy the generated client ID and client secret into `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`.
+5. Use `GITHUB_PERSONAL_TOKEN` only if you need GitHub API access to repos outside the OAuth login flow.
+
 ### Notes
 
 - `.env.local` and `.env.docker` are ignored by git.

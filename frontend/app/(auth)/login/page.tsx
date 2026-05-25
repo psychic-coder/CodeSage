@@ -2,6 +2,7 @@
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { signIn } from "next-auth/react";
 import { authAPI } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
 
@@ -93,6 +94,25 @@ export default function LoginPage() {
             }}
           >
             {loading ? "Signing in..." : "Sign in"}
+          </button>
+
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", color: "var(--color-text-muted)", fontSize: "var(--text-xs)" }}>
+            <span style={{ flex: 1, height: 1, background: "var(--color-border)" }} />
+            <span>or</span>
+            <span style={{ flex: 1, height: 1, background: "var(--color-border)" }} />
+          </div>
+
+          <button
+            type="button"
+            onClick={() => signIn("github", { callbackUrl: "/auth/github/callback" })}
+            style={{
+              padding: "var(--space-3)", borderRadius: "var(--radius-md)",
+              background: "var(--color-surface-2)",
+              color: "var(--color-text)", fontWeight: 700, fontSize: "var(--text-sm)",
+              cursor: "pointer", border: "1px solid var(--color-border)"
+            }}
+          >
+            Continue with GitHub
           </button>
         </form>
 

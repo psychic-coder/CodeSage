@@ -31,6 +31,8 @@ export const authAPI = {
     api.post("/auth/register", { email, password, name }),
   login: (email: string, password: string) =>
     api.post("/auth/login", { email, password }),
+  github: (access_token: string) =>
+    api.post("/auth/github", { access_token }),
   me: () => api.get("/auth/me"),
 };
 
