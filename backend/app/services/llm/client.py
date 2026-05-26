@@ -50,6 +50,32 @@ async def llm_complete(prompt: str, max_tokens: int = 2000, json_mode: bool = Fa
         return ""
 
     # Fallback: use litellm async completion as before
+    # Next fallback: try a local Ollama instance if available
+    ollama_url = getattr(settings, "ollama_url", None)
+    ollama_model = getattr(settings, "ollama_model", settings.llm_model)
+    if ollama_url:
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                payload = {"model": ollama_model, "prompt": prompt, "max_tokens": max_tokens}
+                # Try the common Ollama completions endpoint
+                r = await client.post(ollama_url.rstrip('/') + "/api/completions", json=payload)
+                if r.status_code == 200:
+                    data = r.json()
+                    # Support multiple possible shapes: {choices:[{message:{content:...}}]} or {choices:[{text: "..."}]} or {text: "..."}
+                    choice = (data.get("choices") or [None])[0]
+                    if choice:
+                        message = choice.get("message") or choice
+                        if isinstance(message, dict) and message.get("content"):
+                            return message.get("content")
+                        if isinstance(choice, dict) and choice.get("text"):
+                            return choice.get("text")
+                    if isinstance(data, dict) and data.get("text"):
+                        return data.get("text")
+        except Exception:
+            # ignore and fall through to litellm
+            pass
+
+    # Final fallback: use litellm async completion as before
     for attempt in range(3):
         try:
             kwargs = {

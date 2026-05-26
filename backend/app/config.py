@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     llm_model: str = "gpt-4o"
     embedding_model: str = "text-embedding-3-small"
 
+    # Local Ollama (optional) for on-host LLM inference
+    ollama_url: str = "http://localhost:11434"
+    ollama_model: str = "ollama-default"
+
     github_client_id: str = ""
     github_client_secret: str = ""
     github_personal_token: str = ""
