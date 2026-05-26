@@ -1,5 +1,5 @@
 # ── Stage 1: install dependencies ──────────────────────────────────────────
-FROM node:20-alpine AS deps
+FROM node:20.14.0-alpine3.20 AS deps
 WORKDIR /app
 
 ENV npm_config_fetch_retries=5 \
@@ -11,7 +11,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 
 # ── Stage 2: build the Next.js application ──────────────────────────────────
-FROM node:20-alpine AS builder
+FROM node:20.14.0-alpine3.20 AS builder
 WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
@@ -26,7 +26,7 @@ ENV NEXT_OUTPUT=standalone
 RUN npm run build
 
 # ── Stage 3: production runtime (minimal image) ─────────────────────────────
-FROM node:20-alpine AS runner
+FROM node:20.14.0-alpine3.20 AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production

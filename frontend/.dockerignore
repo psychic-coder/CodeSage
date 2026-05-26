@@ -1,0 +1,12 @@
+node_modules/
+.next/
+dist/
+build/
+.turbo/
+.cache/
+.git/
+.gitignore
+README.md
+docker-compose*.yml
+*.log
+.DS_Store
