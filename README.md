@@ -1,6 +1,5 @@
 # CodeSage
 
-# CodeSage
 <!--
 	A modern, attractive README with diagrams, feature breakdowns and advanced details.
 	Use `mermaid` fenced blocks for diagrams. This README is intended to be the
@@ -8,7 +7,6 @@
 -->
 
 <p align="center">
-	<img alt="CodeSage" src="https://raw.githubusercontent.com/psychic-coder/CodeSage/main/assets/logo.png" width="200" />
 	<h1 align="center">CodeSage</h1>
 	<p align="center"><em>Automated codebase insight, impact analysis and RAG-powered developer intelligence.</em></p>
 	<p align="center">
@@ -61,36 +59,23 @@ CodeSage helps engineering teams understand, prioritize and reason about changes
 The following diagram shows the high-level runtime architecture.
 
 ```mermaid
-flowchart LR
-	subgraph Ingest
-		A[Repo / Files] -->|push / upload| B[Ingestion Service]
-		B --> C[Parser (tree-sitter)]
-	end
+graph LR
+  Repo[Repo / Files] --> IngestService[Ingestion Service]
+  IngestService --> Parser[Parser - tree-sitter]
 
-	subgraph Store
-		C --> D[Neo4j Graph DB]
-		C --> E[Chunker & Embeddings]
-		E --> F[Qdrant]
-		Metadata --> G[Postgres]
-	end
+  Parser --> Neo4j[Neo4j Graph DB]
+  Parser --> Chunker[Chunker & Embeddings]
+  Chunker --> Qdrant[Qdrant]
+  Parser --> Postgres[Postgres (metadata)]
 
-	subgraph Compute
-		H[Celery Workers] --> E
-		H --> D
-		H --> G
-	end
+  Celery[Celery Workers] --> Chunker
+  Celery --> Neo4j
+  Celery --> Postgres
 
-	subgraph API
-		U[Frontend / CLI] -->|HTTP| I[FastAPI]
-		I --> D
-		I --> F
-		I --> G
-	end
-
-	style Ingest fill:#f9f,stroke:#333,stroke-width:1px
-	style Store fill:#ff9,stroke:#333,stroke-width:1px
-	style Compute fill:#9ff,stroke:#333,stroke-width:1px
-	style API fill:#cfc,stroke:#333,stroke-width:1px
+  Frontend[Frontend / CLI] --> API[FastAPI]
+  API --> Neo4j
+  API --> Qdrant
+  API --> Postgres
 ```
 
 ### Sequence: analysis flow
