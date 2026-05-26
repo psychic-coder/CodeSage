@@ -54,7 +54,16 @@ async def reanalyze(project_id: str, cu=Depends(get_current_user), db: AsyncSess
     p = (await db.execute(select(Project).where(Project.id == project_id, Project.user_id == cu["user_id"]))).scalar_one_or_none()
     if not p: raise HTTPException(404, "Project not found")
     await db.execute(delete(AnalysisCache).where(AnalysisCache.project_id == project_id))
+    
+    from app.models.postgres.job import ProcessingJob
+    job = ProcessingJob(id=str(uuid.uuid4()), project_id=project_id, job_type="reanalysis")
+    db.add(job)
     await db.commit()
+    
     from app.workers.tasks import process_repository
-    task = process_repository.delay(project_id, p.source_type, p.source_url or "")
-    return {"job_id": task.id}
+    task = process_repository.delay(project_id, p.source_type, p.source_url or "", job.id)
+    
+    job.celery_task_id = task.id
+    await db.commit()
+    
+    return {"job_id": job.id}

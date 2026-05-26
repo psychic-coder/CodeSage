@@ -12,7 +12,9 @@ class Base(DeclarativeBase):
 from app.models.postgres import User, Project, ProcessingJob, AnalysisCache  # noqa: F401
 
 
-engine = create_async_engine(settings.database_url, echo=False, future=True)
+from sqlalchemy.pool import NullPool
+
+engine = create_async_engine(settings.database_url, echo=False, future=True, poolclass=NullPool)
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
 

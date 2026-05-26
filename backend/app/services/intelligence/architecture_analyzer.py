@@ -24,7 +24,7 @@ async def analyze_architecture(project_id: str) -> dict:
 
         result = await session.run(
             "MATCH (f:File {project_id: $pid}) "
-            "WITH f, size((f)<-[:IMPORTS]-()) AS in_deg, size((f)-[:IMPORTS]->()) AS out_deg "
+            "WITH f, COUNT { (f)<-[:IMPORTS]-() } AS in_deg, COUNT { (f)-[:IMPORTS]->() } AS out_deg "
             "WHERE in_deg > 10 OR out_deg > 15 "
             "RETURN f.path AS path, in_deg, out_deg ORDER BY in_deg DESC",
             pid=project_id,

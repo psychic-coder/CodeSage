@@ -5,9 +5,31 @@ from app.database.redis import get_redis
 from app.services.ingestion.ingestion_pipeline import run_ingestion_pipeline
 
 
+def _reset_connections():
+    from app.database.postgres import engine
+    from app.database.redis import _redis
+    from app.database.neo4j import _driver
+    import app.database.redis as redis_mod
+    import app.database.neo4j as neo4j_mod
+    
+    # Engine dispose is synchronous but thread-safe; cleans up pool connections
+    engine.sync_engine.dispose()
+    redis_mod._redis = None
+    neo4j_mod._driver = None
+
+
 @celery_app.task(bind=True, max_retries=3, default_retry_delay=30)
 def process_repository(self, project_id: str, source_type: str, source_path: str, job_id: str = None):
-    asyncio.run(_async_process(self, project_id, source_type, source_path, job_id))
+    # Reset all connection pools so they bind to the new event loop
+    _reset_connections()
+    
+    # Create a brand new event loop for this task execution
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(_async_process(self, project_id, source_type, source_path, job_id))
+    finally:
+        loop.close()
 
 
 async def _async_process(task, project_id: str, source_type: str, source_path: str, job_id: str = None):
@@ -25,7 +47,7 @@ async def _async_process(task, project_id: str, source_type: str, source_path: s
             await redis.publish(f"job:{job_id}", msg)
         else:
             await redis.publish(f"job:{task.request.id}", msg)
-        await _update_job_db(project_id, progress, step)
+        await _update_job_db(project_id, progress, step, job_id=job_id)
 
     try:
         await report_progress(5, "Preparing repository...")
@@ -87,15 +109,20 @@ async def _update_project_status(project_id: str, status: str, file_count: int =
 
 
 
-async def _update_job_db(project_id: str, progress: int, step: str):
+async def _update_job_db(project_id: str, progress: int, step: str, job_id: str = None):
     from app.database.postgres import AsyncSessionLocal
     from app.models.postgres.job import ProcessingJob
     from sqlalchemy import select
     async with AsyncSessionLocal() as db:
-        result = await db.execute(
-            select(ProcessingJob).where(ProcessingJob.project_id == project_id, ProcessingJob.status == "queued")
-            .order_by(ProcessingJob.created_at.desc())
-        )
+        if job_id:
+            result = await db.execute(select(ProcessingJob).where(ProcessingJob.id == job_id))
+        else:
+            result = await db.execute(
+                select(ProcessingJob)
+                .where(ProcessingJob.project_id == project_id, ProcessingJob.status == "queued")
+                .order_by(ProcessingJob.created_at.desc())
+                .limit(1)
+            )
         job = result.scalar_one_or_none()
         if job:
             job.progress = progress
