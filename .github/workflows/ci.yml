@@ -33,7 +33,7 @@ jobs:
           - 7474:7474
           - 7687:7687
         options: >-
-          --health-cmd="curl -f http://localhost:7474 || exit 1"
+          --health-cmd="wget --no-verbose --tries=1 --spider http://localhost:7474 || exit 1"
           --health-interval=1s
           --health-timeout=5s
           --health-retries=60
