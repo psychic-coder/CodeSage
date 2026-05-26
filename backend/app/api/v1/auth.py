@@ -7,7 +7,10 @@ import httpx
 from app.database.postgres import get_db
 from app.models.postgres.user import User
 from app.models.schemas.auth import RegisterRequest, LoginRequest, GitHubAuthRequest, TokenResponse, UserResponse
-from app.core.auth import hash_password, verify_password, create_access_token, get_current_user
+from app.core.auth import hash_password, verify_password, create_access_token, get_current_user, revoke_token
+from fastapi.security import OAuth2PasswordBearer
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
 router = APIRouter()
 
@@ -100,3 +103,9 @@ async def me(current_user=Depends(get_current_user), db: AsyncSession = Depends(
     if not user:
         raise HTTPException(404, "User not found")
     return UserResponse(id=user.id, email=user.email, name=user.name, avatar_url=user.avatar_url)
+
+
+@router.post("/logout")
+async def logout(token: str = Depends(oauth2_scheme)):
+    await revoke_token(token)
+    return {"message": "Logged out successfully"}

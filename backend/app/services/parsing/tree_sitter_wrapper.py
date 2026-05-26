@@ -116,7 +116,12 @@ def parse_javascript(source: str) -> Optional[Dict[str, Any]]:
                         name_node = c
                         break
                 name = src_bytes[name_node.start_byte:name_node.end_byte].decode("utf8", errors="ignore") if name_node else "<anon>"
-                functions.append({"name": name, "is_async": "async" in node.type})
+                functions.append({
+                    "name": name,
+                    "is_async": "async" in node.type,
+                    "start_line": node.start_point[0] + 1,
+                    "end_line": node.end_point[0] + 1,
+                })
                 func_ranges.append((node.start_byte, node.end_byte, name))
 
             # class declarations
@@ -127,7 +132,11 @@ def parse_javascript(source: str) -> Optional[Dict[str, Any]]:
                         name_node = c
                         break
                 name = src_bytes[name_node.start_byte:name_node.end_byte].decode("utf8", errors="ignore") if name_node else "<anon>"
-                classes.append({"name": name})
+                classes.append({
+                    "name": name,
+                    "start_line": node.start_point[0] + 1,
+                    "end_line": node.end_point[0] + 1,
+                })
 
             # call expressions -> record for call-graph
             if t == "call_expression":
@@ -216,7 +225,12 @@ def parse_python(source: str) -> Optional[Dict[str, Any]]:
                         name_node = c
                         break
                 name = src_bytes[name_node.start_byte:name_node.end_byte].decode("utf8", errors="ignore") if name_node else "<anon>"
-                functions.append({"name": name, "is_async": False})
+                functions.append({
+                    "name": name,
+                    "is_async": False,
+                    "start_line": node.start_point[0] + 1,
+                    "end_line": node.end_point[0] + 1,
+                })
                 func_ranges.append((node.start_byte, node.end_byte, name))
 
             if t == "class_definition":
@@ -226,7 +240,11 @@ def parse_python(source: str) -> Optional[Dict[str, Any]]:
                         name_node = c
                         break
                 name = src_bytes[name_node.start_byte:name_node.end_byte].decode("utf8", errors="ignore") if name_node else "<anon>"
-                classes.append({"name": name})
+                classes.append({
+                    "name": name,
+                    "start_line": node.start_point[0] + 1,
+                    "end_line": node.end_point[0] + 1,
+                })
 
             if t == "call":
                 # callee is first child usually
@@ -240,6 +258,99 @@ def parse_python(source: str) -> Optional[Dict[str, Any]]:
                 calls.append({"caller": caller, "callee": callee_text, "line": node.start_point[0] + 1})
 
             if t in ("if_statement", "for_statement", "while_statement", "except_clause"):
+                complexity += 1
+
+        return {
+            "imports": imports,
+            "functions": functions,
+            "classes": classes,
+            "exports": exports,
+            "calls": calls,
+            "complexity": complexity,
+        }
+    except Exception:
+        return None
+
+
+def parse_generic(source: str, lang_name: str) -> Optional[Dict[str, Any]]:
+    """Attempt to parse generic language using tree-sitter.
+    Returns None if not available.
+    """
+    if not TS_AVAILABLE:
+        return None
+    lib = os.environ.get("TREE_SITTER_LIB")
+    lang = None
+    if lib:
+        lang = _load_language(lib, lang_name)
+    if not lang:
+        return None
+    try:
+        parser = Parser()
+        parser.set_language(lang)
+        src_bytes = bytes(source, "utf8")
+        tree = parser.parse(src_bytes)
+        root = tree.root_node
+
+        imports: list[str] = []
+        functions: list[dict] = []
+        classes: list[dict] = []
+        exports: list[str] = []
+        calls: list[dict] = []
+        complexity = 1
+
+        func_ranges: list[tuple[int, int, str]] = []
+
+        def walk(node):
+            yield node
+            for c in node.children:
+                yield from walk(c)
+
+        for node in walk(root):
+            t = node.type
+            if "import" in t or "include" in t or "require" in t:
+                for c in node.children:
+                    if c.type == "string" or c.type == "identifier" or "string" in c.type:
+                        val = src_bytes[c.start_byte:c.end_byte].decode("utf8", errors="ignore").strip('"\'')
+                        if val:
+                            imports.append(val)
+            
+            if "function" in t or "method" in t or "func" in t:
+                name = "<anon>"
+                for c in node.children:
+                    if "identifier" in c.type or "name" in c.type:
+                        name = src_bytes[c.start_byte:c.end_byte].decode("utf8", errors="ignore")
+                        break
+                functions.append({
+                    "name": name,
+                    "is_async": "async" in t,
+                    "start_line": node.start_point[0] + 1,
+                    "end_line": node.end_point[0] + 1,
+                })
+                func_ranges.append((node.start_byte, node.end_byte, name))
+                
+            if "class" in t or "struct" in t or "interface" in t:
+                name = "<anon>"
+                for c in node.children:
+                    if "identifier" in c.type or "name" in c.type:
+                        name = src_bytes[c.start_byte:c.end_byte].decode("utf8", errors="ignore")
+                        break
+                classes.append({
+                    "name": name,
+                    "start_line": node.start_point[0] + 1,
+                    "end_line": node.end_point[0] + 1,
+                })
+
+            if "call" in t:
+                callee_node = node.children[0] if node.children else None
+                callee_text = src_bytes[callee_node.start_byte:callee_node.end_byte].decode("utf8", errors="ignore") if callee_node else "<unknown>"
+                caller = "<module>"
+                for (s, e, fname) in func_ranges:
+                    if node.start_byte >= s and node.start_byte < e:
+                        caller = fname
+                        break
+                calls.append({"caller": caller, "callee": callee_text, "line": node.start_point[0] + 1})
+
+            if t in ("if_statement", "for_statement", "while_statement", "catch_clause", "except_clause"):
                 complexity += 1
 
         return {

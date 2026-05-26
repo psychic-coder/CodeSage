@@ -19,12 +19,13 @@ function riskColor(score: number) {
 }
 
 function FileNode({ data }: { data: any }) {
+  const nodeSize = Math.max(120, Math.min(220, 120 + (data.in_degree || 0) * 8));
   return (
     <div style={{
-      padding: "6px 10px", borderRadius: "6px",
+      padding: "6px 10px", borderRadius: "10px",
       background: "var(--color-surface-2)",
       border: `2px solid ${riskColor(data.risk_score || 0)}`,
-      fontSize: "11px", maxWidth: "160px",
+      fontSize: "11px", maxWidth: `${nodeSize}px`, minWidth: `${nodeSize}px`,
       color: "var(--color-text)", fontFamily: "monospace"
     }}>
       <Handle type="target" position={Position.Top} style={{ background: "var(--color-border)" }} />
@@ -41,7 +42,9 @@ export default function GraphPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [filterLang, setFilterLang] = useState("");
+  const [filterRisk, setFilterRisk] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [focusDepth, setFocusDepth] = useState(2);
 
   const { data: nodesData, isLoading: nodesLoading } = useQuery({
     queryKey: ["graph-nodes", projectId],
@@ -58,24 +61,60 @@ export default function GraphPage() {
   const filtered = useMemo(() => {
     let nodes = rawNodes;
     if (filterLang) nodes = nodes.filter(n => n.language === filterLang);
+    if (filterRisk) {
+        if (filterRisk === "high") nodes = nodes.filter(n => n.risk_score >= 0.7);
+        else if (filterRisk === "medium") nodes = nodes.filter(n => n.risk_score >= 0.4 && n.risk_score < 0.7);
+        else if (filterRisk === "low") nodes = nodes.filter(n => n.risk_score < 0.4);
+    }
     if (searchQuery) nodes = nodes.filter(n => n.path.toLowerCase().includes(searchQuery.toLowerCase()));
     return nodes;
-  }, [rawNodes, filterLang, searchQuery]);
+  }, [rawNodes, filterLang, filterRisk, searchQuery]);
 
   const filteredPaths = useMemo(() => new Set(filtered.map(n => n.path)), [filtered]);
 
-  const flowNodes: Node[] = useMemo(() => filtered.map((n, i) => ({
+  const neighborhoodPaths = useMemo(() => {
+    if (!selectedNode) return filteredPaths;
+    const adjacency = new Map<string, Set<string>>();
+    const reverseAdjacency = new Map<string, Set<string>>();
+    for (const edge of rawEdges) {
+      if (!adjacency.has(edge.source)) adjacency.set(edge.source, new Set());
+      if (!reverseAdjacency.has(edge.target)) reverseAdjacency.set(edge.target, new Set());
+      adjacency.get(edge.source)!.add(edge.target);
+      reverseAdjacency.get(edge.target)!.add(edge.source);
+    }
+    const visited = new Set<string>([selectedNode.path]);
+    let frontier = new Set<string>([selectedNode.path]);
+    for (let depth = 0; depth < focusDepth; depth += 1) {
+      const next = new Set<string>();
+      for (const path of frontier) {
+        for (const neighbor of adjacency.get(path) || []) if (!visited.has(neighbor)) next.add(neighbor);
+        for (const neighbor of reverseAdjacency.get(path) || []) if (!visited.has(neighbor)) next.add(neighbor);
+      }
+      next.forEach((path) => visited.add(path));
+      frontier = next;
+      if (!frontier.size) break;
+    }
+    return visited;
+  }, [selectedNode, rawEdges, filteredPaths, focusDepth]);
+
+  const visibleNodes = useMemo(() => (selectedNode ? filtered.filter(n => neighborhoodPaths.has(n.path)) : filtered), [filtered, selectedNode, neighborhoodPaths]);
+
+  const flowNodes: Node[] = useMemo(() => visibleNodes.map((n, i) => ({
     id: n.path, type: "file",
     position: { x: (i % 15) * 200, y: Math.floor(i / 15) * 120 },
+    style: {
+      width: Math.max(120, Math.min(220, 120 + (n.in_degree || 0) * 8)),
+    },
     data: { ...n, label: n.name || n.path.split("/").pop(), risk_score: n.risk_score },
-  })), [filtered]);
+  })), [visibleNodes]);
 
   const flowEdges: Edge[] = useMemo(() => rawEdges
-    .filter(e => filteredPaths.has(e.source) && filteredPaths.has(e.target))
+    .filter(e => neighborhoodPaths.has(e.source) && neighborhoodPaths.has(e.target))
     .map((e, i) => ({
       id: `e${i}`, source: e.source, target: e.target,
       style: { stroke: "var(--color-border)", strokeOpacity: 0.5 },
-      animated: false
+      animated: false,
+      markerEnd: { type: "arrowclosed" as any, color: "var(--color-border)" }
     })), [rawEdges, filteredPaths]);
 
   const [nodes, , onNodesChange] = useNodesState(flowNodes);
@@ -121,6 +160,32 @@ export default function GraphPage() {
             <option value="">All Languages</option>
             {languages.map(l => <option key={l} value={l}>{l}</option>)}
           </select>
+          <select value={filterRisk} onChange={e => setFilterRisk(e.target.value)} style={{
+            padding: "var(--space-1) var(--space-3)", borderRadius: "var(--radius-md)",
+            background: "var(--color-surface-2)", border: "1px solid var(--color-border)",
+            color: "var(--color-text)", fontSize: "var(--text-xs)", outline: "none"
+          }}>
+            <option value="">All Risks</option>
+            <option value="high">High Risk</option>
+            <option value="medium">Medium Risk</option>
+            <option value="low">Low Risk</option>
+          </select>
+          <select value={focusDepth} onChange={e => setFocusDepth(Number(e.target.value))} style={{
+            padding: "var(--space-1) var(--space-3)", borderRadius: "var(--radius-md)",
+            background: "var(--color-surface-2)", border: "1px solid var(--color-border)",
+            color: "var(--color-text)", fontSize: "var(--text-xs)", outline: "none"
+          }}>
+            <option value={1}>1 hop</option>
+            <option value={2}>2 hops</option>
+            <option value={3}>3 hops</option>
+          </select>
+          <button onClick={() => setSelectedNode(null)} style={{
+            padding: "var(--space-1) var(--space-3)", borderRadius: "var(--radius-md)",
+            background: "var(--color-surface-2)", border: "1px solid var(--color-border)",
+            color: "var(--color-text)", fontSize: "var(--text-xs)"
+          }}>
+            Clear focus
+          </button>
         </div>
       </div>
 
@@ -167,6 +232,8 @@ export default function GraphPage() {
               { label: "Lines of Code", value: selectedNode.lines_of_code },
               { label: "Complexity Score", value: selectedNode.complexity_score?.toFixed(1) },
               { label: "Size", value: `${(selectedNode.size_bytes / 1024).toFixed(1)} KB` },
+              { label: "In Degree", value: selectedNode.in_degree ?? 0 },
+              { label: "Out Degree", value: selectedNode.out_degree ?? 0 },
             ].map(({ label, value }) => (
               <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "var(--space-2) 0", borderBottom: "1px solid var(--color-divider)" }}>
                 <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)" }}>{label}</span>
@@ -185,6 +252,9 @@ export default function GraphPage() {
               <span style={{ fontSize: "var(--text-xs)", color: riskColor(selectedNode.risk_score || 0), marginTop: "var(--space-1)", display: "block" }}>
                 {((selectedNode.risk_score || 0) * 100).toFixed(0)}%
               </span>
+            </div>
+            <div style={{ marginTop: "var(--space-4)", fontSize: "var(--text-xs)", color: "var(--color-text-muted)" }}>
+              Focus mode shows the selected file and its {focusDepth}-hop neighborhood.
             </div>
           </div>
         )}

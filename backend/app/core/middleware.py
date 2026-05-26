@@ -35,23 +35,25 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if path.startswith('/docs') or path.startswith('/openapi') or path.startswith('/ws'):
             return await call_next(request)
 
-        if path.startswith('/api/v1/analysis') or path.startswith('/api/v1/query'):
-            limit, window = 20, 60
+        if path.startswith('/api/v1/analysis'):
+            limit, window, category = 20, 60, "analysis"
+        elif path.startswith('/api/v1/query'):
+            limit, window, category = 60, 60, "query"
         elif path.startswith('/api/v1/ingest'):
-            limit, window = 5, 3600
+            limit, window, category = 5, 3600, "ingest"
         else:
-            limit, window = 60, 60
+            limit, window, category = 60, 60, "default"
 
         # derive key
         auth = request.headers.get('authorization', '')
+        client_ip = request.client.host if request.client else 'anon'
         if auth:
-            key_id = auth.split()[-1]
+            key_id = f"{auth.split()[-1]}:{client_ip}"
         else:
-            client = request.client.host if request.client else 'anon'
-            key_id = client
+            key_id = client_ip
 
         redis = get_redis()
-        rkey = f"rl:{path.split('/')[3] if len(path.split('/'))>3 else 'global'}:{key_id}"
+        rkey = f"rl:{category}:{key_id}"
         now = int(time.time() * 1000)
         window_ms = window * 1000
 
@@ -63,7 +65,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             cnt = await redis.zcard(rkey)
             await redis.expire(rkey, window + 5)
             if cnt > limit:
-                return JSONResponse({"error": {"code": "RATE_LIMIT_EXCEEDED", "message": "Rate limit exceeded"}}, status_code=429)
+                return JSONResponse(
+                    {"error": {"code": "RATE_LIMIT_EXCEEDED", "message": "Rate limit exceeded"}},
+                    status_code=429,
+                    headers={"Retry-After": str(window)},
+                )
         except Exception:
             # On Redis failure, allow request to avoid outage
             pass

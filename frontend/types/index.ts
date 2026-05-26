@@ -40,6 +40,8 @@ export interface GraphNode {
   complexity_score: number;
   risk_score: number;
   size_bytes: number;
+  in_degree?: number;
+  out_degree?: number;
 }
 
 export interface GraphEdge {

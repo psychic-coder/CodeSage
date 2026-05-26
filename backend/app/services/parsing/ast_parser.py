@@ -2,7 +2,7 @@ import os, re
 import chardet
 from pathlib import Path
 from app.services.parsing.language_detector import detect_language
-from app.services.parsing.tree_sitter_wrapper import parse_javascript, parse_python
+from app.services.parsing.tree_sitter_wrapper import parse_javascript, parse_python, parse_generic
 
 
 def _read_safe(path: str) -> str | None:
@@ -42,6 +42,7 @@ def parse_file(file_path: str, repo_root: str) -> dict | None:
                     "functions": ts_result.get("functions", []),
                     "classes": ts_result.get("classes", []),
                     "exports": ts_result.get("exports", []),
+                    "calls": ts_result.get("calls", []),
                     "complexity": ts_result.get("complexity", 1),
                 })
             else:
@@ -56,13 +57,24 @@ def parse_file(file_path: str, repo_root: str) -> dict | None:
                     "functions": ts_result.get("functions", []),
                     "classes": ts_result.get("classes", []),
                     "exports": ts_result.get("exports", []),
+                    "calls": ts_result.get("calls", []),
                     "complexity": ts_result.get("complexity", 1),
                 })
-                # tree-sitter wrapper may not extract calls; ensure calls extraction
-                if "calls" not in result:
-                    _extract_calls_python(source, result)
             else:
                 _parse_py(source, result)
+        elif lang in ("go", "rust", "java", "c", "cpp", "csharp", "ruby", "php", "swift", "kotlin"):
+            ts_result = parse_generic(source, lang)
+            if ts_result:
+                result.update({
+                    "imports": ts_result.get("imports", []),
+                    "functions": ts_result.get("functions", []),
+                    "classes": ts_result.get("classes", []),
+                    "exports": ts_result.get("exports", []),
+                    "calls": ts_result.get("calls", []),
+                    "complexity": ts_result.get("complexity", 1),
+                })
+            else:
+                result["partially_parsed"] = True
     except Exception:
         result["partially_parsed"] = True
     return result
@@ -84,9 +96,18 @@ def _parse_js(src: str, r: dict):
     for m in re.finditer(r'export\s+(?:default\s+)?(?:function|class|const|let|var)\s+(\w+)', src):
         r["exports"].append(m.group(1))
     for m in re.finditer(r'(?:async\s+)?function\s+(\w+)\s*\(', src):
-        r["functions"].append({"name": m.group(1), "is_async": "async" in m.group(0)})
+        r["functions"].append({
+            "name": m.group(1),
+            "is_async": "async" in m.group(0),
+            "start_line": src[:m.start()].count("\n") + 1,
+            "end_line": src[:m.end()].count("\n") + 1,
+        })
     for m in re.finditer(r'class\s+(\w+)', src):
-        r["classes"].append({"name": m.group(1)})
+        r["classes"].append({
+            "name": m.group(1),
+            "start_line": src[:m.start()].count("\n") + 1,
+            "end_line": src[:m.end()].count("\n") + 1,
+        })
     r["complexity"] = len(re.findall(r'\b(if|else|for|while|switch|catch|\?|&&|\|\|)\b', src)) + 1
 
 
@@ -94,9 +115,18 @@ def _parse_py(src: str, r: dict):
     for m in re.finditer(r'^(?:from\s+(\S+)\s+)?import\s+(.+)', src, re.MULTILINE):
         r["imports"].append((m.group(1) or m.group(2).split()[0]).strip())
     for m in re.finditer(r'^(?:async\s+)?def\s+(\w+)\s*\(', src, re.MULTILINE):
-        r["functions"].append({"name": m.group(1), "is_async": "async" in m.group(0)})
+        r["functions"].append({
+            "name": m.group(1),
+            "is_async": "async" in m.group(0),
+            "start_line": src[:m.start()].count("\n") + 1,
+            "end_line": src[:m.end()].count("\n") + 1,
+        })
     for m in re.finditer(r'^class\s+(\w+)', src, re.MULTILINE):
-        r["classes"].append({"name": m.group(1)})
+        r["classes"].append({
+            "name": m.group(1),
+            "start_line": src[:m.start()].count("\n") + 1,
+            "end_line": src[:m.end()].count("\n") + 1,
+        })
     r["complexity"] = len(re.findall(r'\b(if|elif|else|for|while|except|and|or)\b', src)) + 1
 
     # Extract simple function-level call relationships

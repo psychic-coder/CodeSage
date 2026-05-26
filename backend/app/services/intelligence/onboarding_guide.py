@@ -1,27 +1,27 @@
-from app.services.llm.client import llm_complete_json
-from app.services.llm.prompts import ONBOARDING_GUIDE_PROMPT
+from __future__ import annotations
 
-
-async def generate_onboarding(project_id: str, topic: str) -> dict:
-    prompt = ONBOARDING_GUIDE_PROMPT.format(topic=topic, context=f"Project: {project_id}")
-    try:
-        return await llm_complete_json(prompt, max_tokens=1000)
-    except Exception:
-        return {"topic": topic, "summary": "", "entry_points": []}
-from app.services.rag.graph_rag import graph_rag_query
-from app.services.llm.client import llm_complete
+from app.services.llm.client import llm_complete_json_with_keys
+from app.services.llm.output_parser import sanitize_user_text
 from app.services.llm.prompts import ONBOARDING_GUIDE_PROMPT
-from app.services.llm.output_parser import extract_json
-from app.services.rag.retriever import hybrid_retrieve
+import structlog
+
+logger = structlog.get_logger()
 from app.services.rag.context_builder import build_context
+from app.services.rag.retriever import hybrid_retrieve
 
 
 async def generate_onboarding(project_id: str, topic: str) -> dict:
+    topic = sanitize_user_text(topic)
     chunks = await hybrid_retrieve(project_id, topic, top_k=15)
     context = build_context(chunks)
-    raw = await llm_complete(
-        ONBOARDING_GUIDE_PROMPT.format(topic=topic, context=context),
-        json_mode=True, max_tokens=2500
-    )
-    result = extract_json(raw)
-    return result or {"topic": topic, "error": "Onboarding guide generation failed"}
+    try:
+        result = await llm_complete_json_with_keys(
+            ONBOARDING_GUIDE_PROMPT.format(topic=topic, context=context),
+            required_keys=["topic", "summary", "entry_points", "execution_flow", "key_files"],
+            max_tokens=2500,
+            retries=2,
+        )
+        return result
+    except Exception as e:
+        logger.error("llm_synthesis_failed", error=str(e), query_type="onboarding_guide")
+        return {"topic": topic, "error": "Onboarding guide generation failed", "details": str(e)}
