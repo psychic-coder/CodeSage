@@ -42,7 +42,7 @@ async def get_graph_nodes(project_id: str, skip: int = 0, limit: int = 100):
             "RETURN f.path AS path, f.name AS name, f.extension AS extension, f.language AS language, "
             "f.size_bytes AS size_bytes, f.lines_of_code AS lines_of_code, f.complexity_score AS complexity_score, "
             "f.risk_score AS risk_score, f.project_id AS project_id, "
-            "size((f)<-[:IMPORTS]-()) AS in_degree, size((f)-[:IMPORTS]->()) AS out_degree "
+            "COUNT { (f)<-[:IMPORTS]-() } AS in_degree, COUNT { (f)-[:IMPORTS]->() } AS out_degree "
             "SKIP $skip LIMIT $limit",
             pid=project_id, skip=skip, limit=limit
         )
@@ -82,7 +82,7 @@ async def get_graph_stats(project_id: str):
         )).single())["c"]
         top_files = await session.run(
             "MATCH (f:File {project_id: $pid}) "
-            "WITH f, size((f)<-[:IMPORTS]-()) AS in_deg "
+            "WITH f, COUNT { (f)<-[:IMPORTS]-() } AS in_deg "
             "ORDER BY in_deg DESC LIMIT 10 RETURN f.path AS path, in_deg",
             pid=project_id
         )
