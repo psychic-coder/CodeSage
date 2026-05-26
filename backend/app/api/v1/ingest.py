@@ -43,7 +43,7 @@ async def ingest_github(req: GitHubIngestRequest, cu=Depends(get_current_user), 
     p = await _get_project(req.project_id, cu["user_id"], db)
     p.source_url = req.url; p.status = "processing"
     job = await _create_job(req.project_id, db)
-    task = process_repository.delay(req.project_id, "github", req.url)
+    task = process_repository.delay(req.project_id, "github", req.url, job.id)
     job.celery_task_id = task.id; await db.commit()
     return {"job_id": job.id}
 
@@ -60,7 +60,7 @@ async def ingest_zip(project_id: str, file: UploadFile = File(...), cu=Depends(g
         await out.write(await file.read())
     p.status = "processing"
     job = await _create_job(project_id, db)
-    task = process_repository.delay(project_id, "zip", tmp.name)
+    task = process_repository.delay(project_id, "zip", tmp.name, job.id)
     job.celery_task_id = task.id; await db.commit()
     return {"job_id": job.id}
 
@@ -70,6 +70,6 @@ async def ingest_local(req: LocalIngestRequest, cu=Depends(get_current_user), db
     p = await _get_project(req.project_id, cu["user_id"], db)
     p.status = "processing"
     job = await _create_job(req.project_id, db)
-    task = process_repository.delay(req.project_id, "local", req.local_path)
+    task = process_repository.delay(req.project_id, "local", req.local_path, job.id)
     job.celery_task_id = task.id; await db.commit()
     return {"job_id": job.id}

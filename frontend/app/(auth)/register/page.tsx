@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { authAPI } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
+import { cn } from "@/lib/utils";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -30,58 +31,54 @@ export default function RegisterPage() {
     }
   }
 
-  const inputStyle = {
-    padding: "var(--space-3)", borderRadius: "var(--radius-md)",
-    background: "var(--color-surface-2)", border: "1px solid var(--color-border)",
-    color: "var(--color-text)", fontSize: "var(--text-sm)", outline: "none", width: "100%"
-  };
-
   return (
-    <div style={{ minHeight: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", padding: "var(--space-4)", background: "var(--color-bg)" }}>
-      <div style={{ width: "100%", maxWidth: "420px" }}>
-        <div style={{ textAlign: "center", marginBottom: "var(--space-8)" }}>
-          <Link href="/" style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)", textDecoration: "none" }}>
+    <div className="min-h-[100dvh] flex items-center justify-center p-4 bg-[var(--color-bg)]">
+      <div className="w-full max-w-[420px] animate-fadeIn">
+        <div className="text-center mb-8">
+          <Link href="/" className="inline-flex items-center gap-2 decoration-transparent transition-opacity hover:opacity-80">
             <svg width="32" height="32" viewBox="0 0 28 28" fill="none">
               <rect width="28" height="28" rx="6" fill="var(--color-primary)" fillOpacity="0.15"/>
               <path d="M8 10l4 4-4 4M14 18h6" stroke="var(--color-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
-            <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "var(--text-lg)", color: "var(--color-text)" }}>CodeSage</span>
+            <span className="font-display font-bold text-[var(--text-lg)] text-[var(--color-text)]">CodeSage</span>
           </Link>
-          <h1 style={{ marginTop: "var(--space-6)", fontSize: "var(--text-lg)", fontWeight: 700 }}>Create your account</h1>
-          <p style={{ color: "var(--color-text-muted)", fontSize: "var(--text-sm)", marginTop: "var(--space-1)" }}>Start understanding your codebase</p>
+          <h1 className="mt-6 text-[var(--text-lg)] font-bold">Create your account</h1>
+          <p className="text-[var(--color-text-muted)] text-[var(--text-sm)] mt-1">Start understanding your codebase</p>
         </div>
-        <form onSubmit={handleSubmit} style={{
-          background: "var(--color-surface)", border: "1px solid var(--color-border)",
-          borderRadius: "var(--radius-xl)", padding: "var(--space-8)", display: "flex", flexDirection: "column", gap: "var(--space-4)"
-        }}>
-          {error && <div style={{ padding: "var(--space-3)", borderRadius: "var(--radius-md)", background: "var(--color-error-highlight)", color: "var(--color-error)", fontSize: "var(--text-sm)" }}>{error}</div>}
+        <form onSubmit={handleSubmit} className="glass border border-[var(--color-border)] rounded-2xl p-8 flex flex-col gap-4">
+          {error && (
+            <div className="p-3 rounded-md bg-[var(--color-error-highlight)] text-[var(--color-error)] text-[var(--text-sm)]">
+              {error}
+            </div>
+          )}
           {[
             { key: "name", label: "Name (optional)", type: "text", placeholder: "Your name" },
             { key: "email", label: "Email", type: "email", placeholder: "you@example.com" },
             { key: "password", label: "Password", type: "password", placeholder: "Min. 8 characters" },
           ].map(({ key, label, type, placeholder }) => (
-            <div key={key} style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
-              <label style={{ fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--color-text-muted)" }}>{label}</label>
+            <div key={key} className="flex flex-col gap-2">
+              <label className="text-[var(--text-sm)] font-semibold text-[var(--color-text-muted)]">{label}</label>
               <input
                 type={type} placeholder={placeholder}
                 value={(form as any)[key]}
                 onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
                 required={key !== "name"}
-                style={inputStyle}
+                className="w-full p-3 rounded-md bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text)] text-[var(--text-sm)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] transition-shadow"
               />
             </div>
           ))}
-          <button type="submit" disabled={loading} style={{
-            padding: "var(--space-3)", borderRadius: "var(--radius-md)",
-            background: "var(--color-primary)", color: "#000", fontWeight: 700,
-            fontSize: "var(--text-sm)", cursor: loading ? "not-allowed" : "pointer", marginTop: "var(--space-2)"
-          }}>
+          <button type="submit" disabled={loading} className={cn(
+            "mt-2 p-3 rounded-md font-bold text-[var(--text-sm)] text-black transition-colors duration-200",
+            loading ? "bg-[var(--color-primary-hover)] cursor-not-allowed opacity-80" : "bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] cursor-pointer"
+          )}>
             {loading ? "Creating account..." : "Create account"}
           </button>
         </form>
-        <p style={{ textAlign: "center", marginTop: "var(--space-4)", fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>
+        <p className="text-center mt-6 text-[var(--text-sm)] text-[var(--color-text-muted)]">
           Already have an account?{" "}
-          <Link href="/login" style={{ color: "var(--color-primary)", textDecoration: "none", fontWeight: 600 }}>Sign in</Link>
+          <Link href="/login" className="text-[var(--color-primary)] no-underline font-semibold hover:text-[var(--color-primary-hover)] transition-colors">
+            Sign in
+          </Link>
         </p>
       </div>
     </div>

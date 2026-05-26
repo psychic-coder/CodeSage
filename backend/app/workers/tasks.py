@@ -6,11 +6,11 @@ from app.services.ingestion.ingestion_pipeline import run_ingestion_pipeline
 
 
 @celery_app.task(bind=True, max_retries=3, default_retry_delay=30)
-def process_repository(self, project_id: str, source_type: str, source_path: str):
-    asyncio.run(_async_process(self, project_id, source_type, source_path))
+def process_repository(self, project_id: str, source_type: str, source_path: str, job_id: str = None):
+    asyncio.run(_async_process(self, project_id, source_type, source_path, job_id))
 
 
-async def _async_process(task, project_id: str, source_type: str, source_path: str):
+async def _async_process(task, project_id: str, source_type: str, source_path: str, job_id: str = None):
     redis = get_redis()
 
     async def report_progress(progress: int, step: str):
@@ -21,7 +21,10 @@ async def _async_process(task, project_id: str, source_type: str, source_path: s
             "current_step": step,
             "status": "done" if progress >= 100 else "running",
         })
-        await redis.publish(f"job:{task.request.id}", msg)
+        if job_id:
+            await redis.publish(f"job:{job_id}", msg)
+        else:
+            await redis.publish(f"job:{task.request.id}", msg)
         await _update_job_db(project_id, progress, step)
 
     try:

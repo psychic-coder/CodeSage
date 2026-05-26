@@ -11,7 +11,7 @@ services:
     build: ./backend
     env_file: .env.docker
     depends_on: [postgres, neo4j, qdrant, redis, minio]
-    command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=4
+    entrypoint: ["celery", "-A", "app.workers.celery_app", "worker", "--loglevel=info", "--concurrency=4"]
 
   frontend:
     build: ./frontend
