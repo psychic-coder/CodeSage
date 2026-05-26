@@ -1,10 +1,4 @@
-# CodeSage
 
-<!--
-	A modern, attractive README with diagrams, feature breakdowns and advanced details.
-	Use `mermaid` fenced blocks for diagrams. This README is intended to be the
-	canonical project overview for developers, reviewers and SREs.
--->
 
 <p align="center">
 	<h1 align="center">CodeSage</h1>
@@ -63,19 +57,19 @@ graph LR
   Repo[Repo / Files] --> IngestService[Ingestion Service]
   IngestService --> Parser[Parser - tree-sitter]
 
-  Parser --> Neo4j[Neo4j Graph DB]
-  Parser --> Chunker[Chunker & Embeddings]
-  Chunker --> Qdrant[Qdrant]
-  Parser --> Postgres[Postgres (metadata)]
+	Parser --> Neo4j["Neo4j Graph DB"]
+	Parser --> Chunker["Chunker & Embeddings"]
+	Chunker --> Qdrant["Qdrant"]
+	Parser --> Postgres["Postgres (metadata)"]
 
-  Celery[Celery Workers] --> Chunker
-  Celery --> Neo4j
-  Celery --> Postgres
+	Celery["Celery Workers"] --> Chunker
+	Celery --> Neo4j
+	Celery --> Postgres
 
-  Frontend[Frontend / CLI] --> API[FastAPI]
-  API --> Neo4j
-  API --> Qdrant
-  API --> Postgres
+	Frontend["Frontend / CLI"] --> API["FastAPI"]
+	API --> Neo4j
+	API --> Qdrant
+	API --> Postgres
 ```
 
 ### Sequence: analysis flow
