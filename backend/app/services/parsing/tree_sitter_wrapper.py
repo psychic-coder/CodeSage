@@ -116,7 +116,12 @@ def parse_javascript(source: str) -> Optional[Dict[str, Any]]:
                         name_node = c
                         break
                 name = src_bytes[name_node.start_byte:name_node.end_byte].decode("utf8", errors="ignore") if name_node else "<anon>"
-                functions.append({"name": name, "is_async": "async" in node.type})
+                functions.append({
+                    "name": name,
+                    "is_async": "async" in node.type,
+                    "start_line": node.start_point[0] + 1,
+                    "end_line": node.end_point[0] + 1,
+                })
                 func_ranges.append((node.start_byte, node.end_byte, name))
 
             # class declarations
@@ -127,7 +132,11 @@ def parse_javascript(source: str) -> Optional[Dict[str, Any]]:
                         name_node = c
                         break
                 name = src_bytes[name_node.start_byte:name_node.end_byte].decode("utf8", errors="ignore") if name_node else "<anon>"
-                classes.append({"name": name})
+                classes.append({
+                    "name": name,
+                    "start_line": node.start_point[0] + 1,
+                    "end_line": node.end_point[0] + 1,
+                })
 
             # call expressions -> record for call-graph
             if t == "call_expression":
@@ -216,7 +225,12 @@ def parse_python(source: str) -> Optional[Dict[str, Any]]:
                         name_node = c
                         break
                 name = src_bytes[name_node.start_byte:name_node.end_byte].decode("utf8", errors="ignore") if name_node else "<anon>"
-                functions.append({"name": name, "is_async": False})
+                functions.append({
+                    "name": name,
+                    "is_async": False,
+                    "start_line": node.start_point[0] + 1,
+                    "end_line": node.end_point[0] + 1,
+                })
                 func_ranges.append((node.start_byte, node.end_byte, name))
 
             if t == "class_definition":
@@ -226,7 +240,11 @@ def parse_python(source: str) -> Optional[Dict[str, Any]]:
                         name_node = c
                         break
                 name = src_bytes[name_node.start_byte:name_node.end_byte].decode("utf8", errors="ignore") if name_node else "<anon>"
-                classes.append({"name": name})
+                classes.append({
+                    "name": name,
+                    "start_line": node.start_point[0] + 1,
+                    "end_line": node.end_point[0] + 1,
+                })
 
             if t == "call":
                 # callee is first child usually

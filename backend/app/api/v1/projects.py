@@ -1,9 +1,10 @@
 import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from app.database.postgres import get_db
 from app.models.postgres.project import Project
+from app.models.postgres.job import AnalysisCache
 from app.models.schemas.project import ProjectCreate, ProjectUpdate, ProjectResponse
 from app.core.auth import get_current_user
 
@@ -52,6 +53,8 @@ async def delete_project(project_id: str, cu=Depends(get_current_user), db: Asyn
 async def reanalyze(project_id: str, cu=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     p = (await db.execute(select(Project).where(Project.id == project_id, Project.user_id == cu["user_id"]))).scalar_one_or_none()
     if not p: raise HTTPException(404, "Project not found")
+    await db.execute(delete(AnalysisCache).where(AnalysisCache.project_id == project_id))
+    await db.commit()
     from app.workers.tasks import process_repository
     task = process_repository.delay(project_id, p.source_type, p.source_url or "")
     return {"job_id": task.id}

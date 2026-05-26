@@ -61,10 +61,16 @@ async def build_graph(project_id: str, parsed_files: list[dict]):
             )
 
         import_rels = []
+        external_modules = {}
         for pf in parsed_files:
             for imp in pf.get("resolved_imports", []):
                 if imp["resolved"]:
                     import_rels.append({"from": pf["path"], "to": imp["resolved"], "pid": project_id})
+                elif imp.get("is_external") and imp.get("module_name"):
+                    external_modules.setdefault(
+                        imp["module_name"],
+                        {"id": str(uuid.uuid4()), "project_id": project_id, "name": imp["module_name"], "is_external": True, "version": ""},
+                    )
 
         if import_rels:
             await session.run(
@@ -75,18 +81,34 @@ async def build_graph(project_id: str, parsed_files: list[dict]):
                 rels=import_rels
             )
 
+        if external_modules:
+            await session.run(
+                "UNWIND $mods AS m CREATE (:Module {id: m.id, project_id: m.project_id, name: m.name, is_external: m.is_external, version: m.version})",
+                mods=list(external_modules.values())
+            )
+            await session.run(
+                "UNWIND $rels AS r "
+                "MATCH (f:File {project_id: r.pid, path: r.file_path}) "
+                "MATCH (m:Module {project_id: r.pid, name: r.module_name, is_external: true}) "
+                "MERGE (f)-[:IMPORTS]->(m)",
+                rels=[{"pid": project_id, "file_path": pf["path"], "module_name": imp["module_name"]}
+                      for pf in parsed_files for imp in pf.get("resolved_imports", []) if imp.get("is_external") and imp.get("module_name")]
+            )
+
         func_nodes = []
         for pf in parsed_files:
             for fn in pf.get("functions", []):
                 func_nodes.append({
                     "id": str(uuid.uuid4()), "project_id": project_id,
                     "name": fn["name"], "file_path": pf["path"],
-                    "is_async": fn.get("is_async", False)
+                    "is_async": fn.get("is_async", False),
+                    "start_line": fn.get("start_line"),
+                    "end_line": fn.get("end_line"),
                 })
         if func_nodes:
             await session.run(
                 "UNWIND $nodes AS n CREATE (:Function {id: n.id, project_id: n.project_id, "
-                "name: n.name, file_path: n.file_path, is_async: n.is_async})",
+                "name: n.name, file_path: n.file_path, is_async: n.is_async, start_line: n.start_line, end_line: n.end_line})",
                 nodes=func_nodes
             )
 
@@ -106,13 +128,15 @@ async def build_graph(project_id: str, parsed_files: list[dict]):
             for cls in pf.get("classes", []):
                 class_nodes.append({
                     "id": str(uuid.uuid4()), "project_id": project_id,
-                    "name": cls.get("name"), "file_path": pf["path"]
+                    "name": cls.get("name"), "file_path": pf["path"],
+                    "start_line": cls.get("start_line"),
+                    "end_line": cls.get("end_line"),
                 })
                 file_class_rels.append({"pid": project_id, "file_path": pf["path"], "class_name": cls.get("name")})
 
         if class_nodes:
             await session.run(
-                "UNWIND $nodes AS n CREATE (:Class {id: n.id, project_id: n.project_id, name: n.name, file_path: n.file_path})",
+                "UNWIND $nodes AS n CREATE (:Class {id: n.id, project_id: n.project_id, name: n.name, file_path: n.file_path, start_line: n.start_line, end_line: n.end_line})",
                 nodes=class_nodes
             )
             await session.run(

@@ -14,8 +14,12 @@ async def job_ws(websocket: WebSocket, job_id: str):
     try:
         async for message in pubsub.listen():
             if message["type"] == "message":
-                await websocket.send_text(message["data"])
-                parsed = json.loads(message["data"])
+                payload = message["data"]
+                await websocket.send_text(payload)
+                try:
+                    parsed = json.loads(payload)
+                except Exception:
+                    parsed = {}
                 if parsed.get("progress") == 100:
                     break
     except WebSocketDisconnect:
