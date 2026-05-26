@@ -1,3 +1,13 @@
+from app.services.llm.client import llm_complete_json
+from app.services.llm.prompts import ONBOARDING_GUIDE_PROMPT
+
+
+async def generate_onboarding(project_id: str, topic: str) -> dict:
+    prompt = ONBOARDING_GUIDE_PROMPT.format(topic=topic, context=f"Project: {project_id}")
+    try:
+        return await llm_complete_json(prompt, max_tokens=1000)
+    except Exception:
+        return {"topic": topic, "summary": "", "entry_points": []}
 from app.services.rag.graph_rag import graph_rag_query
 from app.services.llm.client import llm_complete
 from app.services.llm.prompts import ONBOARDING_GUIDE_PROMPT

@@ -1,3 +1,28 @@
+from app.services.llm.client import llm_complete_json
+from app.services.llm.prompts import ARCHITECTURE_ANALYSIS_PROMPT
+from app.database.neo4j import get_neo4j_driver
+
+
+async def analyze_architecture(project_id: str) -> dict:
+    # Collect some graph statistics to pass as context
+    drv = get_neo4j_driver()
+    async with drv.session() as s:
+        res = await s.run("MATCH (n {project_id: $pid}) RETURN count(n) as total", pid=project_id)
+        r = await res.single(); total_nodes = int(r["total"] or 0)
+        res = await s.run("MATCH (f:File {project_id: $pid}) RETURN count(f) as c", pid=project_id)
+        r = await res.single(); file_count = int(r["c"] or 0)
+
+    analysis_data = {
+        "total_nodes": total_nodes,
+        "file_count": file_count,
+        "project_id": project_id
+    }
+
+    prompt = ARCHITECTURE_ANALYSIS_PROMPT.format(analysis_data=analysis_data)
+    try:
+        return await llm_complete_json(prompt, max_tokens=1200)
+    except Exception:
+        return {"overall_health_score": 0, "health_label": "unknown", "issues": [], "strengths": [], "architecture_pattern": "unknown"}
 from app.database.neo4j import get_neo4j_driver
 from app.services.llm.client import llm_complete
 from app.services.llm.prompts import ARCHITECTURE_ANALYSIS_PROMPT

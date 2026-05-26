@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     max_file_size_kb: int = 500
     embedding_batch_size: int = 100
 
+    # Allow extra environment variables (docker .env.docker may include frontend keys)
+    model_config = {"extra": "ignore"}
+
     class Config:
         env_file = ".env"
 

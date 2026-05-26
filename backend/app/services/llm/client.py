@@ -2,6 +2,7 @@ import asyncio
 import httpx
 import litellm
 from app.config import settings
+from app.services.llm import output_parser
 
 # Default to older litellm/OpenAI key for backward compatibility
 litellm.api_key = settings.openai_api_key
@@ -86,3 +87,24 @@ async def get_embeddings(texts: list[str]) -> list[list[float]]:
     # Fallback to litellm embedding
     response = await litellm.aembedding(model=settings.embedding_model, input=texts)
     return [item["embedding"] for item in response["data"]]
+
+
+async def llm_complete_json(prompt: str, max_tokens: int = 2000, retries: int = 2) -> dict:
+    """Call `llm_complete` requesting structured JSON and validate/parse the response.
+
+    Retries a few times if parsing fails. Raises ValueError if no valid JSON returned.
+    """
+    last_exc = None
+    for attempt in range(retries + 1):
+        try:
+            text = await llm_complete(prompt, max_tokens=max_tokens, json_mode=True)
+            parsed = output_parser.extract_json(text or "")
+            if parsed is not None:
+                return parsed
+            raise ValueError("LLM returned non-JSON response")
+        except Exception as exc:
+            last_exc = exc
+            # exponential backoff
+            await asyncio.sleep(1 + attempt)
+            continue
+    raise last_exc or ValueError("Failed to obtain JSON from LLM")

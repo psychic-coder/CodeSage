@@ -1,0 +1,10 @@
+FROM python:3.11-slim
+WORKDIR /src
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential git ca-certificates gcc pkg-config libffi-dev python3-dev && \
+    rm -rf /var/lib/apt/lists/*
+COPY docker_build_tree_sitter.py /src/docker_build_tree_sitter.py
+RUN pip install --no-cache-dir "tree_sitter==0.20.0"
+ENV OUT_DIR=/out
+VOLUME ["/out"]
+ENTRYPOINT ["python", "/src/docker_build_tree_sitter.py", "/out/tree_sitter.so"]

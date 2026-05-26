@@ -1,3 +1,18 @@
+from app.services.llm.client import llm_complete_json
+from app.services.llm.prompts import IMPROVEMENT_ANALYSIS_PROMPT
+from app.services.rag.retriever import hybrid_retrieve
+
+
+async def suggest_improvements(project_id: str, categories: list[str] | None = None) -> list:
+    # Small context from retrieval
+    chunks = await hybrid_retrieve(project_id, "improvement suggestions", top_k=10)
+    context = "\n\n".join([c.get("code", c.get("file_path", "")) for c in chunks[:5]])
+    cats = ",".join(categories) if categories else "all"
+    prompt = IMPROVEMENT_ANALYSIS_PROMPT.format(categories=cats, context=context)
+    try:
+        return await llm_complete_json(prompt, max_tokens=1000)
+    except Exception:
+        return []
 from app.services.graph.graph_queries import get_graph_nodes
 from app.services.llm.client import llm_complete
 from app.services.llm.prompts import IMPROVEMENT_ANALYSIS_PROMPT

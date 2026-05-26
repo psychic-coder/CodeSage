@@ -1,3 +1,14 @@
+from app.services.llm.client import llm_complete_json
+from app.services.llm.prompts import FEATURE_RECOMMENDATION_PROMPT
+
+
+async def recommend_features(project_id: str) -> dict:
+    # Minimal context: project_id (could be extended)
+    prompt = FEATURE_RECOMMENDATION_PROMPT.format(domain="codebase", existing_features=[], arch_summary="")
+    try:
+        return await llm_complete_json(prompt, max_tokens=800)
+    except Exception:
+        return {"detected_domain": "unknown", "recommendations": []}
 from app.services.graph.graph_queries import get_graph_stats
 from app.services.llm.client import llm_complete
 from app.services.llm.prompts import FEATURE_RECOMMENDATION_PROMPT

@@ -1,30 +1,112 @@
 import os
+import json
+from pathlib import Path
 
 EXTS = ['.js', '.ts', '.jsx', '.tsx', '.py', '.mjs', '.html', '.htm']
 
 
+def _load_tsconfig_aliases(repo_root: str) -> dict:
+    """Load compilerOptions.paths from tsconfig.json or jsconfig.json and
+    return a simple alias mapping: alias_prefix -> filesystem path prefix.
+    e.g. {"@/": "src/"}
+    """
+    for name in ("tsconfig.json", "jsconfig.json"):
+        p = Path(repo_root) / name
+        if p.exists():
+            try:
+                data = json.loads(p.read_text())
+                opts = data.get("compilerOptions", {})
+                base = opts.get("baseUrl", "")
+                paths = opts.get("paths", {})
+                aliases = {}
+                for alias, targets in paths.items():
+                    # alias like "@/*" -> targets like ["src/*"]
+                    if alias.endswith("/*"):
+                        key = alias[:-1]
+                        tgt = targets[0] if targets else ""
+                        if tgt.endswith("/*"):
+                            tgt = tgt[:-1]
+                        # resolve baseUrl if present
+                        if base:
+                            tgt = os.path.normpath(os.path.join(base, tgt))
+                        aliases[key] = tgt
+                return aliases
+            except Exception:
+                return {}
+    return {}
+
+
 def resolve_all_imports(parsed_files: list[dict], repo_root: str) -> list[dict]:
     path_index = {pf["path"] for pf in parsed_files}
+    aliases = _load_tsconfig_aliases(repo_root)
+
     for pf in parsed_files:
         resolved = []
         file_dir = os.path.dirname(pf["path"])
         for imp in pf["imports"]:
-            if imp.startswith("."):
+            target = None
+            is_external = True
+            # Relative imports
+            if imp.startswith('.'):
                 target = _resolve_relative(imp, file_dir, path_index)
-                resolved.append({"raw": imp, "resolved": target, "is_external": target is None})
+                is_external = target is None
             else:
-                resolved.append({"raw": imp, "resolved": None, "is_external": True})
+                # Try alias resolution (e.g. @/components/Button -> src/components/Button)
+                for alias_prefix, mapped in aliases.items():
+                    if imp.startswith(alias_prefix):
+                        rel = imp.replace(alias_prefix, mapped)
+                        # Normalize and strip leading slashes
+                        rel = rel.lstrip('/')
+                        target = _resolve_candidate(rel, path_index)
+                        is_external = target is None
+                        break
+                # If not alias, try bare resolution (module path relative to repo root)
+                if target is None:
+                    target = _resolve_candidate(imp, path_index)
+                    # if still None, treat as external npm/pip module
+                    is_external = target is None
+
+            resolved.append({"raw": imp, "resolved": target, "is_external": is_external})
+
         pf["resolved_imports"] = resolved
     return parsed_files
 
 
+def _resolve_candidate(candidate: str, path_index: set) -> str | None:
+    """Attempt to resolve a non-relative candidate against the path index.
+
+    Candidate is a repository-relative path (no leading ./ or ../). We try:
+    - exact match
+    - with known extensions
+    - as a directory/index.ext
+    """
+    candidate = os.path.normpath(candidate)
+    # direct match
+    if candidate in path_index:
+        return candidate
+    # try extensions
+    for ext in EXTS:
+        if candidate + ext in path_index:
+            return candidate + ext
+    # try index files under candidate/
+    for ext in EXTS:
+        idx = os.path.join(candidate, 'index' + ext)
+        if idx in path_index:
+            return idx
+    return None
+
+
 def _resolve_relative(imp: str, file_dir: str, path_index: set) -> str | None:
+    # Build a normalized repository-relative path
     base = os.path.normpath(os.path.join(file_dir, imp))
+    # If imp pointed to a file with extension (./foo.js)
     if base in path_index:
         return base
+    # Try with extensions
     for ext in EXTS:
         if base + ext in path_index:
             return base + ext
+    # Directory index files
     for ext in EXTS:
         candidate = os.path.join(base, "index" + ext)
         if candidate in path_index:
