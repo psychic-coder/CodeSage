@@ -1,0 +1,158 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+    branches: ["main", "master"]
+
+jobs:
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=1s
+          --health-timeout=5s
+          --health-retries=30
+      neo4j:
+        image: neo4j:5.18
+        env:
+          NEO4J_AUTH: neo4j/password
+          NEO4J_ACCEPT_LICENSE_AGREEMENT: 'yes'
+        ports:
+          - 7474:7474
+          - 7687:7687
+        options: >-
+          --health-cmd="curl -f http://localhost:7474 || exit 1"
+          --health-interval=1s
+          --health-timeout=5s
+          --health-retries=60
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping || exit 1"
+          --health-interval=1s
+          --health-timeout=5s
+          --health-retries=30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/backend/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f backend/requirements.txt ]; then pip install -r backend/requirements.txt; fi
+          pip install pytest pytest-asyncio httpx
+          # install the backend package so tests import `app` naturally
+          pip install -e backend
+
+      - name: Wait for Postgres to be ready
+        run: |
+          python - <<'PY'
+import time, os
+import psycopg2
+url = os.getenv('ALEMBIC_DATABASE_URL','postgresql://postgres:postgres@localhost:5432/postgres')
+for i in range(30):
+    try:
+        psycopg2.connect(url)
+        print('postgres ready')
+        break
+    except Exception:
+        time.sleep(1)
+else:
+    raise SystemExit('postgres did not become ready')
+PY
+
+      - name: Run Alembic migrations
+        env:
+          ALEMBIC_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+        run: |
+          cd backend
+          alembic upgrade head
+
+        - name: Wait for Neo4j and Redis
+        run: |
+          python - <<'PY'
+    import time, os
+    from neo4j import GraphDatabase
+    import redis
+
+    neo_url = 'bolt://localhost:7687'
+    neo_user = 'neo4j'
+    neo_password = 'password'
+    for i in range(60):
+      try:
+        drv = GraphDatabase.driver(neo_url, auth=(neo_user, neo_password))
+        drv.verify_connectivity()
+        print('neo4j ready')
+        break
+      except Exception:
+        time.sleep(1)
+    else:
+      raise SystemExit('neo4j did not become ready')
+
+    for i in range(30):
+      try:
+        r = redis.Redis.from_url('redis://localhost:6379/0')
+        if r.ping():
+          print('redis ready')
+          break
+      except Exception:
+        time.sleep(1)
+    else:
+      raise SystemExit('redis did not become ready')
+    PY
+
+      - name: Compile backend
+        run: python -m compileall backend
+
+      - name: Run backend tests
+        run: |
+          cd backend
+          pytest -q
+
+  frontend:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Build frontend
+        run: |
+          cd frontend
+          npm run build --if-present
