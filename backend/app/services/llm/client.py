@@ -31,6 +31,8 @@ async def llm_complete(prompt: str, max_tokens: int = 2000, json_mode: bool = Fa
             payload["reasoning"] = reasoning
 
         async with httpx.AsyncClient(timeout=30.0) as client:
+            last_exc = None
+            success = False
             for attempt in range(3):
                 try:
                     r = await client.post(url, headers=headers, json=payload)
@@ -39,14 +41,19 @@ async def llm_complete(prompt: str, max_tokens: int = 2000, json_mode: bool = Fa
                     # OpenRouter mirrors OpenAI/Anthropic response shapes; try to extract message
                     choice = data.get("choices", [None])[0]
                     if not choice:
-                        return ""
+                        break
                     # Support both chat-style and direct message shapes
                     message = choice.get("message") or choice.get("delta") or choice
-                    return (message.get("content") if isinstance(message, dict) else str(message)) or ""
-                except Exception:
-                    if attempt == 2:
-                        raise
-                    await asyncio.sleep(2 ** attempt)
+                    result_text = (message.get("content") if isinstance(message, dict) else str(message)) or ""
+                    success = True
+                    return result_text
+                except Exception as exc:
+                    last_exc = exc
+                    if attempt < 2:
+                        await asyncio.sleep(2 ** attempt)
+                    else:
+                        # don't raise here; fall back to Ollama / litellm
+                        break
         return ""
 
     # Fallback: use litellm async completion as before
