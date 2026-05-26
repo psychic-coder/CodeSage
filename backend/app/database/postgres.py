@@ -1,18 +1,17 @@
+from importlib import import_module
+
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import NullPool
 
 from app.config import settings
-from app.models.postgres import (  # noqa: F401
-    AnalysisCache,
-    ProcessingJob,
-    Project,
-    User,
-)
 
 
 class Base(DeclarativeBase):
     pass
+
+
+import_module("app.models.postgres")
 
 
 engine = create_async_engine(
