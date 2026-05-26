@@ -1,8 +1,252 @@
 # CodeSage
 
 # CodeSage
+<!--
+	A modern, attractive README with diagrams, feature breakdowns and advanced details.
+	Use `mermaid` fenced blocks for diagrams. This README is intended to be the
+	canonical project overview for developers, reviewers and SREs.
+-->
 
-CodeSage is a developer-assist platform that analyzes codebases, builds dependency graphs, computes impact and risk, and provides RAG (retrieval-augmented generation) analysis and recommendations using LLMs and vector stores. It combines static analysis, graph analysis, embeddings, and LLM-driven intelligence to help engineers understand and prioritize code changes.
+<p align="center">
+	<img alt="CodeSage" src="https://raw.githubusercontent.com/psychic-coder/CodeSage/main/assets/logo.png" width="200" />
+	<h1 align="center">CodeSage</h1>
+	<p align="center"><em>Automated codebase insight, impact analysis and RAG-powered developer intelligence.</em></p>
+	<p align="center">
+		<a href="#features">Features</a> •
+		<a href="#architecture">Architecture</a> •
+		<a href="#quickstart">Quickstart</a> •
+		<a href="#contributing">Contributing</a>
+	</p>
+</p>
+
+CodeSage helps engineering teams understand, prioritize and reason about changes in large codebases. It combines static analysis (ASTs), graph analysis, embeddings + vector retrieval, and LLM-powered explanations to turn code structure into actionable insights.
+
+---
+
+## Badges
+
+![Build](https://img.shields.io/badge/ci-GitHub%20Actions-blue)
+![Python](https://img.shields.io/badge/python-3.11-blue)
+![License](https://img.shields.io/badge/license-none-lightgrey)
+
+---
+
+## Features (short and deep)
+
+- Graph-based analysis
+	- Auto-builds a symbol/dependency graph from source using tree-sitter and graph builder services.
+	- Queryable relationships (impact propagation, call/usage graphs) via Neo4j.
+
+- Static parsing & multi-language support
+	- Uses `tree-sitter` parsers to support multiple programming languages.
+	- Canonical AST extraction and cross-language symbol normalization.
+
+- Semantic retrieval & RAG
+	- Splits source/context into chunks, creates embeddings, and stores them in Qdrant.
+	- Combines semantic retrieval with LLM prompts for context-aware explanations and suggestions.
+
+- Risk & impact scoring
+	- Propagation calculators and risk scorers to prioritize tests and reviews.
+
+- Scalable background processing
+	- Celery workers with Redis broker for ingestion, embedding generation and heavy analysis.
+
+- Integrations
+	- GitHub repo ingestion, OpenRouter/LLM integration, Postgres for metadata, MinIO optional for file storage.
+
+---
+
+## Architecture (diagram)
+
+The following diagram shows the high-level runtime architecture.
+
+```mermaid
+flowchart LR
+	subgraph Ingest
+		A[Repo / Files] -->|push / upload| B[Ingestion Service]
+		B --> C[Parser (tree-sitter)]
+	end
+
+	subgraph Store
+		C --> D[Neo4j Graph DB]
+		C --> E[Chunker & Embeddings]
+		E --> F[Qdrant]
+		Metadata --> G[Postgres]
+	end
+
+	subgraph Compute
+		H[Celery Workers] --> E
+		H --> D
+		H --> G
+	end
+
+	subgraph API
+		U[Frontend / CLI] -->|HTTP| I[FastAPI]
+		I --> D
+		I --> F
+		I --> G
+	end
+
+	style Ingest fill:#f9f,stroke:#333,stroke-width:1px
+	style Store fill:#ff9,stroke:#333,stroke-width:1px
+	style Compute fill:#9ff,stroke:#333,stroke-width:1px
+	style API fill:#cfc,stroke:#333,stroke-width:1px
+```
+
+### Sequence: analysis flow
+
+```mermaid
+sequenceDiagram
+	participant User
+	participant API
+	participant Ingest
+	participant Workers
+	participant Neo4j
+	participant Qdrant
+	User->>API: Request repo ingest
+	API->>Ingest: enqueue ingest job
+	Ingest->>Workers: parse files
+	Workers->>Neo4j: write graph
+	Workers->>Qdrant: write embeddings
+	API->>User: success + job id
+```
+
+---
+
+## Tech stack & tools (detailed)
+
+- Backend: Python 3.11, FastAPI, Pydantic
+- Database: PostgreSQL (SQLAlchemy/asyncpg), Alembic migrations
+- Graph: Neo4j (neo4j-driver)
+- Vector DB: Qdrant (qdrant-client)
+- Embeddings, LLM: OpenRouter (configurable provider), `tiktoken` (tokenization)
+- Parsers: `tree-sitter` (language grammars)
+- Workers: Celery with Redis broker
+- Storage: MinIO (optional) for uploaded artifacts
+- Frontend: Next.js, TypeScript, Tailwind CSS
+- CI: GitHub Actions (backend tests, migrations, frontend build)
+- Packaging: setuptools (`pyproject.toml`, `setup.cfg`)
+
+---
+
+## Complete Quickstart (exact commands)
+
+Follow these exact steps to get a local development environment matching CI:
+
+```bash
+# 1. Clone + branch
+git clone <repo-url> CodeSage
+cd CodeSage
+git checkout -b feat/tests
+
+# 2. Tooling
+curl https://pyenv.run | bash    # optional: install pyenv
+pyenv install 3.11.6             # recommended version
+pyenv local 3.11.6
+
+# 3. Venv
+python -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip setuptools wheel
+
+# 4. Install deps + package
+pip install -r backend/requirements.txt
+pip install -e backend
+
+# 5. (optional) start services via docker-compose
+docker-compose up -d
+
+# 6. Run migrations
+cd backend
+alembic upgrade head
+
+# 7. Run backend
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+# 8. Frontend
+cd ../frontend
+npm ci
+npm run dev
+```
+
+---
+
+## Environment variables (core)
+
+Create `.env.local` or `.env.docker` from `.env.example`.
+
+- `DATABASE_URL` - Postgres DSN (e.g. `postgresql://postgres:postgres@localhost:5432/postgres`)
+- `NEO4J_URL` - bolt URL for Neo4j (e.g. `bolt://localhost:7687`)
+- `NEO4J_USER`, `NEO4J_PASSWORD` - Neo4j auth
+- `QDRANT_URL` - Qdrant host (e.g. `http://localhost:6333`)
+- `REDIS_URL` - Redis DSN (e.g. `redis://localhost:6379/0`)
+- `OPENROUTER_API_KEY` - API key for LLM provider
+- `LLM_MODEL`, `EMBEDDING_MODEL` - model names
+- `MINIO_*` - MinIO connection details (if used)
+
+Add other keys as needed for integrations (e.g. GitHub OAuth, Sentry DSN).
+
+---
+
+## Running tests & local CI parity
+
+- Unit tests: `python -m pytest backend/tests -q`
+- To mirror CI, ensure Python 3.11 and that the backend package is installed. CI runs migrations before tests and starts Postgres/Neo4j/Redis services.
+
+## Production Dockerfile notes
+
+- `backend/Dockerfile` installs requirements then runs `pip install .` so the package is installed into the image.
+- If native libraries fail to build in the image add build dependencies (Debian/Ubuntu example):
+
+```dockerfile
+RUN apt-get update && apt-get install -y gcc libpq-dev build-essential ca-certificates curl
+# install rust for tiktoken
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:$PATH"
+```
+
+---
+
+## Advanced: Packaging & Release
+
+- Use `pyproject.toml` + `setup.cfg` for packaging.
+- For deterministic production builds prefer building a wheel in CI and installing the wheel in the image:
+
+```bash
+# in CI pipeline
+python -m pip wheel -w dist .
+pip install dist/codesage_backend-*.whl
+```
+
+---
+
+## Troubleshooting (practical)
+
+- ModuleNotFoundError for `app`/`backend`: install package or set `PYTHONPATH`.
+- Native build errors: Use Python 3.11 and install Rust + system libs.
+- Service readiness: Increase healthcheck retries in `.github/workflows/ci.yml`.
+
+## Roadmap & Ideas
+
+- Add GitHub Actions artifact caching for built wheels.
+- Add granular instrumentation for job durations and worker queues.
+- Add multi-tenant organization support and access controls.
+
+---
+
+## Contributing
+
+- Fork, branch, test locally, open PR against `main`.
+- Keep migrations small and add tests.
+
+## Credits
+
+- Built with open-source projects: FastAPI, Neo4j, Qdrant, Celery, Next.js, tree-sitter.
+
+## License
+
+Add a `LICENSE` file to indicate licensing. Currently none included.
+
 
 --
 
@@ -234,11 +478,5 @@ In CI we run the same command against the test Postgres service before running t
 
 This repository does not include an explicit license file. Add a `LICENSE` if you intend to open-source the project.
 
----
 
-If you'd like, I can also:
-
-- Add a short architecture diagram or Mermaid flow in this README.
-- Add a `CONTRIBUTING.md` with Git/branching conventions.
-- Add Dockerfile build-deps for native extensions and re-run a local build.
 
