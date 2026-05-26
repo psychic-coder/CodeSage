@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 
 from app.database.postgres import AsyncSessionLocal
 from app.models.postgres.project import Project
+from app.models.postgres.user import User
 
 
 async def main(repo_url: str):
@@ -14,6 +15,13 @@ async def main(repo_url: str):
     name = parsed.path.rstrip('/').split('/')[-1] or repo_url
     pid = str(uuid.uuid4())
     async with AsyncSessionLocal() as session:
+        # ensure a system user exists (foreign key constraint)
+        existing = await session.get(User, 'system')
+        if existing is None:
+            u = User(id='system', email='system@local', name='system')
+            session.add(u)
+            await session.flush()
+
         p = Project(id=pid, user_id='system', name=name, description='', source_type='github', source_url=repo_url)
         session.add(p)
         await session.commit()
