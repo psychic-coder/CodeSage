@@ -20,40 +20,45 @@ async def llm_complete(prompt: str, max_tokens: int = 2000, json_mode: bool = Fa
             "Authorization": f"Bearer {settings.openrouter_api_key}",
             "Content-Type": "application/json",
         }
-        payload = {
-            "model": settings.llm_model,
-            "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": max_tokens,
-        }
-        if json_mode:
-            payload["response_format"] = {"type": "json_object"}
-        if reasoning is not None:
-            payload["reasoning"] = reasoning
+
+        # Try primary model then fallback OpenRouter models before falling back to Ollama/litellm
+        models_to_try = [getattr(settings, "openrouter_model", settings.llm_model)] + list(
+            getattr(settings, "openrouter_fallback_models", [])
+        )
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             last_exc = None
-            success = False
-            for attempt in range(3):
-                try:
-                    r = await client.post(url, headers=headers, json=payload)
-                    r.raise_for_status()
-                    data = r.json()
-                    # OpenRouter mirrors OpenAI/Anthropic response shapes; try to extract message
-                    choice = data.get("choices", [None])[0]
-                    if not choice:
+            for model in models_to_try:
+                payload = {
+                    "model": model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": max_tokens,
+                }
+                if json_mode:
+                    payload["response_format"] = {"type": "json_object"}
+                if reasoning is not None:
+                    payload["reasoning"] = reasoning
+
+                for attempt in range(2):
+                    try:
+                        r = await client.post(url, headers=headers, json=payload)
+                        r.raise_for_status()
+                        data = r.json()
+                        choice = data.get("choices", [None])[0]
+                        if not choice:
+                            break
+                        message = choice.get("message") or choice.get("delta") or choice
+                        result_text = (message.get("content") if isinstance(message, dict) else str(message)) or ""
+                        if result_text:
+                            return result_text
                         break
-                    # Support both chat-style and direct message shapes
-                    message = choice.get("message") or choice.get("delta") or choice
-                    result_text = (message.get("content") if isinstance(message, dict) else str(message)) or ""
-                    success = True
-                    return result_text
-                except Exception as exc:
-                    last_exc = exc
-                    if attempt < 2:
-                        await asyncio.sleep(2 ** attempt)
-                    else:
-                        # don't raise here; fall back to Ollama / litellm
-                        break
+                    except Exception as exc:
+                        last_exc = exc
+                        if attempt < 1:
+                            await asyncio.sleep(2 ** attempt)
+                        else:
+                            # try next model
+                            break
         return ""
 
     # Fallback: use litellm async completion as before

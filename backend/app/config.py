@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     # Local Ollama (optional) for on-host LLM inference
     ollama_url: str = "http://localhost:11434"
     ollama_model: str = "ollama-default"
+    # OpenRouter model preferences and fallbacks
+    openrouter_model: str = "gpt-4o-mini"
+    openrouter_fallback_models: list[str] = ["gpt-3.5-mini"]
 
     github_client_id: str = ""
     github_client_secret: str = ""
