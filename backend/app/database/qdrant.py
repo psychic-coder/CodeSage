@@ -1,4 +1,5 @@
 from qdrant_client import AsyncQdrantClient
+
 from app.config import settings
 
 _client = None

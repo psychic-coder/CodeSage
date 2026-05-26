@@ -1,4 +1,7 @@
-import zipfile, tarfile, tempfile, os
+import os
+import tarfile
+import tempfile
+import zipfile
 from pathlib import Path
 
 

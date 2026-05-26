@@ -14,7 +14,11 @@ def split_into_chunks(file_data: dict) -> list[dict]:
     for entity in file_data.get("functions", []) + file_data.get("classes", []):
         start_line = entity.get("start_line")
         end_line = entity.get("end_line")
-        if isinstance(start_line, int) and isinstance(end_line, int) and end_line >= start_line:
+        if (
+            isinstance(start_line, int)
+            and isinstance(end_line, int)
+            and end_line >= start_line
+        ):
             spans.append((start_line - 1, end_line))
 
     spans = sorted(set(spans))
@@ -29,13 +33,15 @@ def split_into_chunks(file_data: dict) -> list[dict]:
         def flush_buffer():
             nonlocal buffer_start, buffer_end, buffer_chars
             if buffer_end > buffer_start:
-                chunks.append({
-                    "file_path": file_data["path"],
-                    "language": file_data["language"],
-                    "start_line": buffer_start + 1,
-                    "end_line": buffer_end,
-                    "code": line_slice(buffer_start, buffer_end),
-                })
+                chunks.append(
+                    {
+                        "file_path": file_data["path"],
+                        "language": file_data["language"],
+                        "start_line": buffer_start + 1,
+                        "end_line": buffer_end,
+                        "code": line_slice(buffer_start, buffer_end),
+                    }
+                )
             buffer_start = buffer_end = buffer_chars = 0
 
         for start, end in spans:
@@ -77,21 +83,25 @@ def split_into_chunks(file_data: dict) -> list[dict]:
         current.append(line)
         current_chars += len(line)
         if current_chars >= target_chars:
-            chunks.append({
-                "file_path": file_data["path"],
-                "language": file_data["language"],
-                "start_line": start_line + 1,
-                "end_line": i + 1,
-                "code": "".join(current)
-            })
+            chunks.append(
+                {
+                    "file_path": file_data["path"],
+                    "language": file_data["language"],
+                    "start_line": start_line + 1,
+                    "end_line": i + 1,
+                    "code": "".join(current),
+                }
+            )
             current, start_line, current_chars = [], i + 1, 0
 
     if current:
-        chunks.append({
-            "file_path": file_data["path"],
-            "language": file_data["language"],
-            "start_line": start_line + 1,
-            "end_line": start_line + len(current),
-            "code": "".join(current)
-        })
+        chunks.append(
+            {
+                "file_path": file_data["path"],
+                "language": file_data["language"],
+                "start_line": start_line + 1,
+                "end_line": start_line + len(current),
+                "code": "".join(current),
+            }
+        )
     return chunks

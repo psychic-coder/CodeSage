@@ -1,7 +1,7 @@
 import os
 import pytest
 
-from backend.app.services.parsing import tree_sitter_wrapper as tsw
+from app.services.parsing import tree_sitter_wrapper as tsw
 
 
 @pytest.mark.skipif(not os.path.exists('backend/app/vendor/tree_sitter.so'), reason='tree_sitter.so not present')

@@ -1,6 +1,6 @@
-from app.services.llm.client import get_embeddings
-from app.services.embeddings.vector_store import search_similar
 from app.database.neo4j import get_neo4j_driver
+from app.services.embeddings.vector_store import search_similar
+from app.services.llm.client import get_embeddings
 
 
 async def hybrid_retrieve(project_id: str, query: str, top_k: int = 20) -> list[dict]:
@@ -10,7 +10,14 @@ async def hybrid_retrieve(project_id: str, query: str, top_k: int = 20) -> list[
     graph_results = await _graph_expand(project_id, seed_paths)
 
     # Merge vector results and graph results into a single list
-    merged = {r["file_path"]: {"file_path": r["file_path"], "score": r.get("score", 0), "code": r.get("code", "")} for r in vector_results}
+    merged = {
+        r["file_path"]: {
+            "file_path": r["file_path"],
+            "score": r.get("score", 0),
+            "code": r.get("code", ""),
+        }
+        for r in vector_results
+    }
     for g in graph_results:
         if g["path"] not in merged:
             merged[g["path"]] = {"file_path": g["path"], "score": 0.0, "code": ""}
@@ -40,7 +47,8 @@ async def _graph_expand(project_id: str, seed_paths: list[str]) -> list[dict]:
             result = await session.run(
                 "MATCH (f:File {project_id: $pid, path: $fp})-[:IMPORTS|IMPORTS*2]-(neighbor:File) "
                 "RETURN DISTINCT neighbor.path AS path LIMIT 10",
-                pid=project_id, fp=path
+                pid=project_id,
+                fp=path,
             )
             async for r in result:
                 results.append({"path": r["path"]})
@@ -57,24 +65,33 @@ async def _fetch_graph_meta(project_id: str, paths: list[str]) -> dict:
             "UNWIND $paths AS p "
             "MATCH (f:File {project_id: $pid, path: p}) "
             "RETURN f.path AS path, f.risk_score AS risk, f.complexity_score AS complexity",
-            paths=paths, pid=project_id
+            paths=paths,
+            pid=project_id,
         )
         async for r in result:
-            meta[r["path"]] = {"risk": float(r.get("risk") or 0.0), "betweenness": 0.0, "complexity": float(r.get("complexity") or 0.0)}
+            meta[r["path"]] = {
+                "risk": float(r.get("risk") or 0.0),
+                "betweenness": 0.0,
+                "complexity": float(r.get("complexity") or 0.0),
+            }
 
         # Try to compute normalized betweenness via GDS streaming for the provided paths
         try:
             # Project temporary graph name
-            gname = f'proj_graph_{project_id.replace("-", "_")}'
+            gname = f"proj_graph_{project_id.replace('-', '_')}"
             await session.run(f"CALL gds.graph.project('{gname}', 'File', 'IMPORTS')")
-            res = await session.run(f"CALL gds.betweenness.stream('{gname}') YIELD nodeId, score RETURN gds.util.asNode(nodeId).path AS path, score")
+            res = await session.run(
+                f"CALL gds.betweenness.stream('{gname}') YIELD nodeId, score RETURN gds.util.asNode(nodeId).path AS path, score"
+            )
             rows = [r async for r in res]
             if rows:
-                max_score = max((r['score'] for r in rows), default=1)
+                max_score = max((r["score"] for r in rows), default=1)
                 for r in rows:
-                    p = r['path']
+                    p = r["path"]
                     if p in meta:
-                        meta[p]['betweenness'] = float(r['score']) / float(max_score) if max_score else 0.0
+                        meta[p]["betweenness"] = (
+                            float(r["score"]) / float(max_score) if max_score else 0.0
+                        )
             await session.run(f"CALL gds.graph.drop('{gname}') YIELD graphName")
         except Exception:
             # ignore if GDS not available

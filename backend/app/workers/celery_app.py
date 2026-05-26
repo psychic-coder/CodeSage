@@ -1,11 +1,12 @@
 from celery import Celery
+
 from app.config import settings
 
 celery_app = Celery(
     "codesage",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["app.workers.tasks"]
+    include=["app.workers.tasks"],
 )
 celery_app.conf.update(
     task_serializer="json",

@@ -1,5 +1,9 @@
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from importlib import import_module
+
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import NullPool
+
 from app.config import settings
 
 
@@ -7,12 +11,12 @@ class Base(DeclarativeBase):
     pass
 
 
-# Import models so that Base.metadata is populated (needed by Alembic env.py and
-# any code that inspects the schema, but NOT for create_all which is removed).
-from app.models.postgres import User, Project, ProcessingJob, AnalysisCache  # noqa: F401
+import_module("app.models.postgres")
 
 
-engine = create_async_engine(settings.database_url, echo=False, future=True)
+engine = create_async_engine(
+    settings.database_url, echo=False, future=True, poolclass=NullPool
+)
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
 

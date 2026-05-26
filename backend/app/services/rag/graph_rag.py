@@ -1,8 +1,8 @@
-from app.services.rag.retriever import hybrid_retrieve
-from app.services.rag.context_builder import build_context
 from app.services.llm.client import llm_complete, llm_complete_json_with_keys
-from app.services.llm.prompts import GRAPH_RAG_QUERY_PROMPT
 from app.services.llm.output_parser import sanitize_user_text
+from app.services.llm.prompts import GRAPH_RAG_QUERY_PROMPT
+from app.services.rag.context_builder import build_context
+from app.services.rag.retriever import hybrid_retrieve
 
 
 async def graph_rag_query(project_id: str, query: str) -> dict:
@@ -25,7 +25,9 @@ async def graph_rag_query(project_id: str, query: str) -> dict:
     )
 
     try:
-        parsed = await llm_complete_json_with_keys(json_prompt, max_tokens=1000, required_keys=["answer"])
+        parsed = await llm_complete_json_with_keys(
+            json_prompt, max_tokens=1000, required_keys=["answer"]
+        )
         if isinstance(parsed, dict):
             answer = parsed.get("answer") or parsed.get("answer_text") or str(parsed)
             sources_from_llm = parsed.get("sources")
@@ -37,8 +39,12 @@ async def graph_rag_query(project_id: str, query: str) -> dict:
         answer = await llm_complete(base_prompt, max_tokens=1000)
         sources_from_llm = None
 
-    default_sources = [{"file": c.get("file_path"), "score": c.get("score")} for c in chunks[:5]]
-    sources = sources_from_llm if isinstance(sources_from_llm, list) else default_sources
+    default_sources = [
+        {"file": c.get("file_path"), "score": c.get("score")} for c in chunks[:5]
+    ]
+    sources = (
+        sources_from_llm if isinstance(sources_from_llm, list) else default_sources
+    )
 
     return {
         "query": query,

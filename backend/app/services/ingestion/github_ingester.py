@@ -1,8 +1,11 @@
-import tempfile, re
+import re
+import tempfile
+
 from git import Repo
+
 from app.config import settings
 
-GITHUB_RE = re.compile(r'^https://github\.com/([a-zA-Z0-9_.-]+)/([a-zA-Z0-9_.-]+)')
+GITHUB_RE = re.compile(r"^https://github\.com/([a-zA-Z0-9_.-]+)/([a-zA-Z0-9_.-]+)")
 
 
 async def clone_github_repo(url: str) -> str:

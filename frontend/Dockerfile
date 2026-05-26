@@ -8,7 +8,7 @@ ENV npm_config_fetch_retries=5 \
     npm_config_fetch_retry_maxtimeout=120000
 
 COPY package.json package-lock.json ./
-RUN npm ci --no-audit --no-fund
+RUN npm install --frozen-lockfile --no-audit --no-fund
 
 # ── Stage 2: build the Next.js application ──────────────────────────────────
 FROM node:20.14.0-alpine3.20 AS builder
@@ -39,6 +39,7 @@ RUN addgroup --system --gid 1001 nodejs && \
 # Copy only the standalone server + static assets produced by the build
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+RUN mkdir -p /app/public
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
 USER nextjs

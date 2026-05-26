@@ -1,9 +1,10 @@
 "use client";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { projectsAPI, graphAPI } from "@/lib/api";
+import { JobProgress } from "@/components/shared/JobProgress";
 import { useAppStore } from "@/lib/store";
 import type { Project } from "@/types";
 
@@ -34,11 +35,19 @@ export default function ProjectOverviewPage() {
   const project = projectData?.data;
   const stats = statsData?.data;
 
+  const [reanalyzeJobId, setReanalyzeJobId] = useState<string | null>(null);
+
   useEffect(() => { if (project) setCurrentProject(project); }, [project, setCurrentProject]);
 
   async function handleReanalyze() {
-    await projectsAPI.reanalyze(projectId);
-    qc.invalidateQueries({ queryKey: ["project", projectId] });
+    try {
+      const res = await projectsAPI.reanalyze(projectId);
+      if (res.data?.job_id) {
+        setReanalyzeJobId(res.data.job_id);
+      }
+    } catch (err) {
+      console.error("Failed to reanalyze", err);
+    }
   }
 
   if (isLoading) {
@@ -153,6 +162,34 @@ export default function ProjectOverviewPage() {
               </div>
             </Link>
           ))}
+        </div>
+      )}
+
+      {reanalyzeJobId && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 100,
+          display: "flex", alignItems: "center", justifyContent: "center", padding: "var(--space-4)"
+        }}>
+          <div style={{
+            background: "var(--color-surface)", border: "1px solid var(--color-border)",
+            borderRadius: "var(--radius-xl)", padding: "var(--space-6)", width: "100%", maxWidth: "480px"
+          }} className="animate-fadeIn">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--space-6)" }}>
+              <h2 style={{ fontFamily: "var(--font-display)", fontSize: "var(--text-lg)", fontWeight: 700 }}>
+                Re-analyzing Project...
+              </h2>
+            </div>
+            <JobProgress 
+              jobId={reanalyzeJobId} 
+              onComplete={() => {
+                setTimeout(() => {
+                  setReanalyzeJobId(null);
+                  qc.invalidateQueries({ queryKey: ["project", projectId] });
+                }, 1500);
+              }}
+              onError={(msg) => console.error(msg)}
+            />
+          </div>
         </div>
       )}
     </div>
