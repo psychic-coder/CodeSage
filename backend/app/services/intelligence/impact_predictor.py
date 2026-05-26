@@ -1,9 +1,12 @@
 from app.services.rag.retriever import hybrid_retrieve
 from app.services.rag.context_builder import build_context
 from app.services.graph.impact_calculator import bfs_impact
-from app.services.llm.client import llm_complete, llm_complete_json_with_keys
+from app.services.llm.client import llm_complete_json_with_keys
 from app.services.llm.prompts import IMPACT_INTENT_PROMPT, IMPACT_SYNTHESIS_PROMPT
-from app.services.llm.output_parser import extract_json, sanitize_user_text
+from app.services.llm.output_parser import sanitize_user_text
+import structlog
+
+logger = structlog.get_logger()
 
 
 async def predict_impact(project_id: str, feature_description: str) -> dict:
@@ -27,16 +30,18 @@ async def predict_impact(project_id: str, feature_description: str) -> dict:
         f"- {f['path']} (depth={f['depth']}, score={f['impact_score']})"
         for f in impacted
     )
-    raw = await llm_complete(
-        IMPACT_SYNTHESIS_PROMPT.format(
-            feature_description=feature_description,
-            context=context,
-            impacted_files=impacted_summary,
-        ),
-        json_mode=True,
-        max_tokens=2000,
-    )
-    result = extract_json(raw)
-    if not result:
-        return {"error": "Failed to parse impact analysis", "raw": raw[:500]}
-    return result
+    try:
+        result = await llm_complete_json_with_keys(
+            IMPACT_SYNTHESIS_PROMPT.format(
+                feature_description=feature_description,
+                context=context,
+                impacted_files=impacted_summary,
+            ),
+            required_keys=["files_to_modify", "files_to_create", "downstream_risks", "dependencies_to_add", "estimated_complexity"],
+            max_tokens=2000,
+            retries=2,
+        )
+        return result
+    except Exception as e:
+        logger.error("llm_synthesis_failed", error=str(e), query_type="impact_predictor")
+        return {"error": "Failed to parse impact analysis", "details": str(e)}

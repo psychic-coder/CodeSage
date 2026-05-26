@@ -147,13 +147,51 @@ async def build_graph(project_id: str, parsed_files: list[dict]):
                 rels=file_class_rels
             )
 
+        # Build EXTENDS / IMPLEMENTS edges
+        class_extends = []
+        class_implements = []
+        for pf in parsed_files:
+            for cls in pf.get("classes", []):
+                for ext in cls.get("extends", []):
+                    class_extends.append({"pid": project_id, "from": cls["name"], "to": ext, "file_path": pf["path"]})
+                for impl in cls.get("implements", []):
+                    class_implements.append({"pid": project_id, "from": cls["name"], "to": impl, "file_path": pf["path"]})
+        
+        if class_extends:
+            await session.run(
+                "UNWIND $rels AS r "
+                "MATCH (c1:Class {project_id: r.pid, name: r.from, file_path: r.file_path}) "
+                "MATCH (c2:Class {project_id: r.pid, name: r.to}) "
+                "MERGE (c1)-[:EXTENDS]->(c2)",
+                rels=class_extends
+            )
+        if class_implements:
+            await session.run(
+                "UNWIND $rels AS r "
+                "MATCH (c1:Class {project_id: r.pid, name: r.from, file_path: r.file_path}) "
+                "MATCH (c2:Class {project_id: r.pid, name: r.to}) "
+                "MERGE (c1)-[:IMPLEMENTS]->(c2)",
+                rels=class_implements
+            )
+
         # Export nodes and relationships
         export_nodes = []
         file_export_rels = []
+        function_export_rels = []
+        class_export_rels = []
+        
+        func_names = {fn["name"] for fn in func_nodes}
+        class_names = {c["name"] for c in class_nodes}
+
         for pf in parsed_files:
             for ex in pf.get("exports", []):
-                export_nodes.append({"id": str(uuid.uuid4()), "project_id": project_id, "name": ex, "file_path": pf["path"]})
-                file_export_rels.append({"pid": project_id, "file_path": pf["path"], "export_name": ex})
+                if ex in func_names:
+                    function_export_rels.append({"pid": project_id, "file_path": pf["path"], "export_name": ex})
+                elif ex in class_names:
+                    class_export_rels.append({"pid": project_id, "file_path": pf["path"], "export_name": ex})
+                else:
+                    export_nodes.append({"id": str(uuid.uuid4()), "project_id": project_id, "name": ex, "file_path": pf["path"]})
+                    file_export_rels.append({"pid": project_id, "file_path": pf["path"], "export_name": ex})
 
         if export_nodes:
             await session.run(
@@ -166,6 +204,24 @@ async def build_graph(project_id: str, parsed_files: list[dict]):
                 "MATCH (e:Export {project_id: r.pid, name: r.export_name}) "
                 "MERGE (f)-[:EXPORTS]->(e)",
                 rels=file_export_rels
+            )
+        
+        if function_export_rels:
+            await session.run(
+                "UNWIND $rels AS r "
+                "MATCH (f:File {project_id: r.pid, path: r.file_path}) "
+                "MATCH (fn:Function {project_id: r.pid, name: r.export_name, file_path: r.file_path}) "
+                "MERGE (f)-[:EXPORTS]->(fn)",
+                rels=function_export_rels
+            )
+            
+        if class_export_rels:
+            await session.run(
+                "UNWIND $rels AS r "
+                "MATCH (f:File {project_id: r.pid, path: r.file_path}) "
+                "MATCH (c:Class {project_id: r.pid, name: r.export_name, file_path: r.file_path}) "
+                "MERGE (f)-[:EXPORTS]->(c)",
+                rels=class_export_rels
             )
 
         # Build CALLS relationships from parsed call lists

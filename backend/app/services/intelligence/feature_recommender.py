@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from app.services.graph.graph_queries import get_graph_stats
-from app.services.llm.client import llm_complete
-from app.services.llm.output_parser import extract_json
+from app.services.llm.client import llm_complete_json_with_keys
 from app.services.llm.prompts import FEATURE_RECOMMENDATION_PROMPT
+import structlog
+
+logger = structlog.get_logger()
 
 
 async def recommend_features(project_id: str) -> dict:
@@ -11,17 +13,21 @@ async def recommend_features(project_id: str) -> dict:
     arch_summary = f"Top files: {[file_info['path'] for file_info in stats.get('top_files', [])[:5]]}"
     existing_features = _infer_features(stats)
 
-    raw = await llm_complete(
-        FEATURE_RECOMMENDATION_PROMPT.format(
-            domain="software",
-            existing_features=existing_features,
-            arch_summary=arch_summary,
-        ),
-        json_mode=True,
-        max_tokens=2000,
-    )
-    result = extract_json(raw)
-    return result or {"error": "Feature recommendation failed"}
+    try:
+        result = await llm_complete_json_with_keys(
+            FEATURE_RECOMMENDATION_PROMPT.format(
+                domain="software",
+                existing_features=existing_features,
+                arch_summary=arch_summary,
+            ),
+            required_keys=["detected_domain", "existing_features", "recommendations"],
+            max_tokens=2000,
+            retries=2,
+        )
+        return result
+    except Exception as e:
+        logger.error("llm_synthesis_failed", error=str(e), query_type="feature_recommendation")
+        return {"error": "Feature recommendation failed", "details": str(e)}
 
 
 def _infer_features(stats: dict) -> list[str]:

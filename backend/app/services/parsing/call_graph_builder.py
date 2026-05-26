@@ -10,34 +10,64 @@ def build_call_graph(parsed_files: list[dict]) -> list[dict]:
     identifier, and the best available file path is attached when resolvable.
     """
 
-    function_index: dict[str, list[dict]] = {}
+    # Index functions by (file_path, function_name)
+    file_func_map = {}
     for parsed in parsed_files:
         for fn in parsed.get("functions", []):
-            function_index.setdefault(fn.get("name", ""), []).append(
-                {
-                    "file_path": parsed.get("path"),
-                    "name": fn.get("name"),
-                    "is_async": fn.get("is_async", False),
-                }
-            )
+            file_func_map[(parsed.get("path"), fn.get("name"))] = fn
 
-    relationships: list[dict] = []
+    relationships = []
     for parsed in parsed_files:
         caller_file = parsed.get("path")
+        
+        # Candidate files for resolution (local + direct imports)
+        candidate_files = {caller_file}
+        for imp in parsed.get("resolved_imports", []):
+            if imp.get("resolved"):
+                candidate_files.add(imp["resolved"])
+
         for call in parsed.get("calls", []):
             callee_name = _normalize_callee_name(call.get("callee", ""))
             if not callee_name:
                 continue
-            for candidate in function_index.get(callee_name, []):
-                relationships.append(
-                    {
+
+            # 1. Check local file first
+            if (caller_file, callee_name) in file_func_map:
+                relationships.append({
+                    "caller": call.get("caller"),
+                    "callee": callee_name,
+                    "caller_file_path": caller_file,
+                    "callee_file_path": caller_file,
+                    "line": call.get("line", 0),
+                })
+                continue
+
+            # 2. Check directly imported files
+            matched = False
+            for cfile in candidate_files:
+                if cfile != caller_file and (cfile, callee_name) in file_func_map:
+                    relationships.append({
                         "caller": call.get("caller"),
-                        "callee": candidate.get("name"),
+                        "callee": callee_name,
                         "caller_file_path": caller_file,
-                        "callee_file_path": candidate.get("file_path"),
+                        "callee_file_path": cfile,
                         "line": call.get("line", 0),
-                    }
-                )
+                    })
+                    matched = True
+            
+            if matched:
+                continue
+
+            # 3. Global fallback for unresolved or method calls (e.g. obj.method)
+            for (fpath, fname) in file_func_map.keys():
+                if fname == callee_name:
+                    relationships.append({
+                        "caller": call.get("caller"),
+                        "callee": callee_name,
+                        "caller_file_path": caller_file,
+                        "callee_file_path": fpath,
+                        "line": call.get("line", 0),
+                    })
     return relationships
 
 

@@ -134,6 +134,26 @@ def _resolve_relative(imp: str, file_dir: str, path_index: set) -> str | None:
 
 def _discover_package_roots(repo_root: str) -> list[str]:
     roots = {"."}
+    
+    # Check for workspaces at root
+    try:
+        pj_path = os.path.join(repo_root, "package.json")
+        if os.path.exists(pj_path):
+            with open(pj_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if "workspaces" in data:
+                    # just a heuristic to flag it's a monorepo
+                    pass
+    except Exception:
+        pass
+
+    try:
+        pnpm_path = os.path.join(repo_root, "pnpm-workspace.yaml")
+        if os.path.exists(pnpm_path):
+            pass
+    except Exception:
+        pass
+
     for current, dirs, files in os.walk(repo_root):
         rel = os.path.relpath(current, repo_root)
         if "package.json" in files or "pyproject.toml" in files or "go.mod" in files or "Cargo.toml" in files:

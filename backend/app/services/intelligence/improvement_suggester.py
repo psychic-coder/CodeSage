@@ -3,9 +3,11 @@ from __future__ import annotations
 import re
 
 from app.services.graph.graph_queries import get_graph_nodes
-from app.services.llm.client import llm_complete
-from app.services.llm.output_parser import extract_json
+from app.services.llm.client import llm_complete_json
 from app.services.llm.prompts import IMPROVEMENT_ANALYSIS_PROMPT
+import structlog
+
+logger = structlog.get_logger()
 
 HARDCODED_SECRET_RE = re.compile(
     r'(?:api_key|apikey|password|secret|token|auth)\s*=\s*["\'][^"\']{8,}["\']',
@@ -22,15 +24,23 @@ async def suggest_improvements(project_id: str, categories: list[str] | None = N
     ]
     context = "\n".join(context_parts)
 
-    raw = await llm_complete(
-        IMPROVEMENT_ANALYSIS_PROMPT.format(
-            categories=", ".join(cats),
-            context=context,
-        ),
-        json_mode=True,
-        max_tokens=3000,
-    )
-    result = extract_json(raw)
-    if isinstance(result, list):
-        return result
-    return []
+    try:
+        result = await llm_complete_json(
+            IMPROVEMENT_ANALYSIS_PROMPT.format(
+                categories=", ".join(cats),
+                context=context,
+            ),
+            max_tokens=3000,
+            retries=2,
+        )
+        if isinstance(result, list):
+            return result
+        # if the LLM wrapped it in a dict e.g. {"improvements": [...]}
+        elif isinstance(result, dict) and "improvements" in result:
+            return result["improvements"]
+        elif isinstance(result, dict) and "issues" in result:
+            return result["issues"]
+        return []
+    except Exception as e:
+        logger.error("llm_synthesis_failed", error=str(e), query_type="improvement_suggester")
+        return []

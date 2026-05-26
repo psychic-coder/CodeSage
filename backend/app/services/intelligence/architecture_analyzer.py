@@ -3,9 +3,11 @@ from __future__ import annotations
 import json
 
 from app.database.neo4j import get_neo4j_driver
-from app.services.llm.client import llm_complete
-from app.services.llm.output_parser import extract_json
+from app.services.llm.client import llm_complete_json_with_keys
 from app.services.llm.prompts import ARCHITECTURE_ANALYSIS_PROMPT
+import structlog
+
+logger = structlog.get_logger()
 
 
 async def analyze_architecture(project_id: str) -> dict:
@@ -55,12 +57,14 @@ async def analyze_architecture(project_id: str) -> dict:
         )
         findings["external_deps"] = [{"name": row["name"], "usage": row["usage"]} async for row in result]
 
-    raw = await llm_complete(
-        ARCHITECTURE_ANALYSIS_PROMPT.format(analysis_data=json.dumps(findings, indent=2)),
-        json_mode=True,
-        max_tokens=2000,
-    )
-    result = extract_json(raw)
-    if not result:
-        return {"findings": findings, "error": "LLM synthesis failed"}
-    return result
+    try:
+        result = await llm_complete_json_with_keys(
+            ARCHITECTURE_ANALYSIS_PROMPT.format(analysis_data=json.dumps(findings, indent=2)),
+            required_keys=["overall_health_score", "health_label", "issues", "strengths", "architecture_pattern"],
+            max_tokens=2000,
+            retries=2,
+        )
+        return result
+    except Exception as e:
+        logger.error("llm_synthesis_failed", error=str(e), query_type="architecture")
+        return {"findings": findings, "error": "LLM synthesis failed", "details": str(e)}

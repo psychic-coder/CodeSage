@@ -2,7 +2,7 @@ import os, re
 import chardet
 from pathlib import Path
 from app.services.parsing.language_detector import detect_language
-from app.services.parsing.tree_sitter_wrapper import parse_javascript, parse_python
+from app.services.parsing.tree_sitter_wrapper import parse_javascript, parse_python, parse_generic
 
 
 def _read_safe(path: str) -> str | None:
@@ -62,6 +62,19 @@ def parse_file(file_path: str, repo_root: str) -> dict | None:
                 })
             else:
                 _parse_py(source, result)
+        elif lang in ("go", "rust", "java", "c", "cpp", "csharp", "ruby", "php", "swift", "kotlin"):
+            ts_result = parse_generic(source, lang)
+            if ts_result:
+                result.update({
+                    "imports": ts_result.get("imports", []),
+                    "functions": ts_result.get("functions", []),
+                    "classes": ts_result.get("classes", []),
+                    "exports": ts_result.get("exports", []),
+                    "calls": ts_result.get("calls", []),
+                    "complexity": ts_result.get("complexity", 1),
+                })
+            else:
+                result["partially_parsed"] = True
     except Exception:
         result["partially_parsed"] = True
     return result
