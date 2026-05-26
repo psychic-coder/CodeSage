@@ -6,6 +6,7 @@ from app.database.postgres import get_db
 from app.models.postgres.job import AnalysisCache
 from app.models.schemas.analysis import ImpactRequest, PropagationRequest, OnboardingRequest, AnalysisResponse
 from app.core.auth import get_current_user
+from app.services.llm.output_parser import sanitize_user_text
 
 router = APIRouter()
 
@@ -28,7 +29,7 @@ async def _cached(db, project_id, query_type, query_text, fn):
 @router.post("/impact", response_model=AnalysisResponse)
 async def impact(req: ImpactRequest, cu=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from app.services.intelligence.impact_predictor import predict_impact
-    desc = req.feature_description[:2000]
+    desc = sanitize_user_text(req.feature_description)
     data, cached = await _cached(db, req.project_id, "impact", desc,
                                  lambda: predict_impact(req.project_id, desc))
     return AnalysisResponse(data=data, cached=cached)
@@ -69,6 +70,7 @@ async def recommendations(project_id: str, cu=Depends(get_current_user), db: Asy
 @router.post("/onboarding", response_model=AnalysisResponse)
 async def onboarding(req: OnboardingRequest, cu=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from app.services.intelligence.onboarding_guide import generate_onboarding
-    data, cached = await _cached(db, req.project_id, "onboarding", req.topic,
-                                 lambda: generate_onboarding(req.project_id, req.topic))
+    topic = sanitize_user_text(req.topic)
+    data, cached = await _cached(db, req.project_id, "onboarding", topic,
+                                 lambda: generate_onboarding(req.project_id, topic))
     return AnalysisResponse(data=data, cached=cached)

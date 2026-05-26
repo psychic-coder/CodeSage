@@ -132,12 +132,22 @@ async def llm_complete_json(prompt: str, max_tokens: int = 2000, retries: int = 
 
     Retries a few times if parsing fails. Raises ValueError if no valid JSON returned.
     """
+    return await llm_complete_json_with_keys(prompt, max_tokens=max_tokens, retries=retries)
+
+
+async def llm_complete_json_with_keys(
+    prompt: str,
+    max_tokens: int = 2000,
+    retries: int = 2,
+    required_keys: list[str] | None = None,
+) -> dict:
+    """JSON completion helper with optional required-key validation."""
     last_exc = None
     for attempt in range(retries + 1):
         try:
             text = await llm_complete(prompt, max_tokens=max_tokens, json_mode=True)
             parsed = output_parser.extract_json(text or "")
-            if parsed is not None:
+            if output_parser.validate_required_keys(parsed, required_keys):
                 return parsed
             raise ValueError("LLM returned non-JSON response")
         except Exception as exc:

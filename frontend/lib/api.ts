@@ -80,6 +80,8 @@ export const graphAPI = {
     api.get(`/graph/${project_id}/nodes`, { params: { skip, limit } }),
   edges: (project_id: string, skip = 0, limit = 500) =>
     api.get(`/graph/${project_id}/edges`, { params: { skip, limit } }),
+  subgraph: (project_id: string, file_path: string, hops = 2) =>
+    api.get(`/graph/${project_id}/subgraph`, { params: { file_path, hops } }),
   stats: (project_id: string) =>
     api.get(`/graph/${project_id}/stats`),
 };
