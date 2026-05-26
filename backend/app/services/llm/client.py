@@ -1,35 +1,38 @@
 import asyncio
 import httpx
 import litellm
+import structlog
 from app.config import settings
 from app.services.llm import output_parser
 
-# Default to older litellm/OpenAI key for backward compatibility
+logger = structlog.get_logger()
+
+# Wire litellm to the OpenAI key for its fallback path
 litellm.api_key = settings.openai_api_key
 
 
 async def llm_complete(prompt: str, max_tokens: int = 2000, json_mode: bool = False, reasoning: dict | None = None) -> str:
-    """Complete using OpenRouter if configured, otherwise fall back to litellm.
+    """Route completions: OpenRouter (with model fallback chain) → Ollama → LiteLLM/OpenAI.
 
-    `reasoning` is an optional dict forwarded to OpenRouter (e.g. {"enabled": True}).
+    Raises ``RuntimeError`` if every path fails so callers always get an
+    exception rather than a silent empty string.
     """
-    # Prefer OpenRouter when API key is present
+    errors: list[str] = []
+
+    # ── 1. OpenRouter ────────────────────────────────────────────────────────
     if settings.openrouter_api_key:
         url = settings.openrouter_base_url.rstrip("/") + "/api/v1/chat/completions"
         headers = {
             "Authorization": f"Bearer {settings.openrouter_api_key}",
             "Content-Type": "application/json",
         }
-
-        # Try primary model then fallback OpenRouter models before falling back to Ollama/litellm
         models_to_try = [getattr(settings, "openrouter_model", settings.llm_model)] + list(
             getattr(settings, "openrouter_fallback_models", [])
         )
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            last_exc = None
+        async with httpx.AsyncClient(timeout=60.0) as client:
             for model in models_to_try:
-                payload = {
+                payload: dict = {
                     "model": model,
                     "messages": [{"role": "user", "content": prompt}],
                     "max_tokens": max_tokens,
@@ -48,49 +51,50 @@ async def llm_complete(prompt: str, max_tokens: int = 2000, json_mode: bool = Fa
                         if not choice:
                             break
                         message = choice.get("message") or choice.get("delta") or choice
-                        result_text = (message.get("content") if isinstance(message, dict) else str(message)) or ""
-                        if result_text:
-                            return result_text
+                        text = (message.get("content") if isinstance(message, dict) else str(message)) or ""
+                        if text:
+                            return text
+                        # empty content — treat as transient failure
+                        err = f"OpenRouter/{model} returned empty content"
+                        errors.append(err)
+                        logger.warning("llm_empty_response", model=model, attempt=attempt)
                         break
                     except Exception as exc:
-                        last_exc = exc
+                        err = f"OpenRouter/{model} attempt {attempt}: {exc}"
+                        errors.append(err)
+                        logger.warning("llm_request_error", model=model, attempt=attempt, error=str(exc))
                         if attempt < 1:
                             await asyncio.sleep(2 ** attempt)
-                        else:
-                            # try next model
-                            break
-        return ""
 
-    # Fallback: use litellm async completion as before
-    # Next fallback: try a local Ollama instance if available
-    ollama_url = getattr(settings, "ollama_url", None)
+    # ── 2. Ollama (local, optional) ───────────────────────────────────────────
+    ollama_url = getattr(settings, "ollama_url", None) or ""
     ollama_model = getattr(settings, "ollama_model", settings.llm_model)
     if ollama_url:
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=60.0) as client:
                 payload = {"model": ollama_model, "prompt": prompt, "max_tokens": max_tokens}
-                # Try the common Ollama completions endpoint
-                r = await client.post(ollama_url.rstrip('/') + "/api/completions", json=payload)
+                r = await client.post(ollama_url.rstrip("/") + "/api/completions", json=payload)
                 if r.status_code == 200:
                     data = r.json()
-                    # Support multiple possible shapes: {choices:[{message:{content:...}}]} or {choices:[{text: "..."}]} or {text: "..."}
                     choice = (data.get("choices") or [None])[0]
                     if choice:
                         message = choice.get("message") or choice
                         if isinstance(message, dict) and message.get("content"):
-                            return message.get("content")
+                            return message["content"]
                         if isinstance(choice, dict) and choice.get("text"):
-                            return choice.get("text")
+                            return choice["text"]
                     if isinstance(data, dict) and data.get("text"):
-                        return data.get("text")
-        except Exception:
-            # ignore and fall through to litellm
-            pass
+                        return data["text"]
+                errors.append(f"Ollama/{ollama_model} returned status {r.status_code} or empty body")
+                logger.warning("llm_ollama_empty", model=ollama_model, status=r.status_code)
+        except Exception as exc:
+            errors.append(f"Ollama/{ollama_model}: {exc}")
+            logger.warning("llm_ollama_error", error=str(exc))
 
-    # Final fallback: use litellm async completion as before
+    # ── 3. LiteLLM / OpenAI direct ───────────────────────────────────────────
     for attempt in range(3):
         try:
-            kwargs = {
+            kwargs: dict = {
                 "model": settings.llm_model,
                 "messages": [{"role": "user", "content": prompt}],
                 "max_tokens": max_tokens,
@@ -98,12 +102,20 @@ async def llm_complete(prompt: str, max_tokens: int = 2000, json_mode: bool = Fa
             if json_mode:
                 kwargs["response_format"] = {"type": "json_object"}
             response = await litellm.acompletion(**kwargs)
-            return response.choices[0].message.content or ""
-        except Exception:
-            if attempt == 2:
-                raise
-            await asyncio.sleep(2 ** attempt)
-    return ""
+            text = response.choices[0].message.content or ""
+            if text:
+                return text
+            errors.append(f"LiteLLM/{settings.llm_model} returned empty content on attempt {attempt}")
+        except Exception as exc:
+            errors.append(f"LiteLLM/{settings.llm_model} attempt {attempt}: {exc}")
+            logger.warning("llm_litellm_error", attempt=attempt, error=str(exc))
+            if attempt < 2:
+                await asyncio.sleep(2 ** attempt)
+
+    # Every path failed — raise so callers can handle or surface the error.
+    raise RuntimeError(
+        f"All LLM backends failed ({len(errors)} attempts). Last errors: " + " | ".join(errors[-3:])
+    )
 
 
 async def get_embeddings(texts: list[str]) -> list[list[float]]:

@@ -127,16 +127,24 @@ async def get_propagation_tree(project_id: str, file_path: str, change_type: str
 
     tree = await _bfs_dependents(project_id, file_path, max_depth)
     total_impacted = _count_nodes(tree)
-    risk_score = min(0.1 * total_impacted, 1.0)
 
-    llm_context = f"File: {file_path}\nChange type: {change_type}\nImpacted files: {total_impacted}"
+    # Depth-weighted risk: depth-1 nodes contribute their full risk_score;
+    # each additional hop is discounted by 0.5 so deeply nested dependents
+    # contribute less.  Score is clamped to [0, 1].
+    weighted_risk = _weighted_risk(tree, depth=1)
+    risk_score = round(min(weighted_risk, 1.0), 3)
+
+    llm_context = (
+        f"File: {file_path}\nChange type: {change_type}\n"
+        f"Total impacted files: {total_impacted}\nWeighted risk score: {risk_score}"
+    )
     explanation = await llm_complete(
         PROPAGATION_ANALYSIS_PROMPT.format(context=llm_context), max_tokens=500
     )
 
     result = {
         "target_file": file_path,
-        "risk_score": round(risk_score, 2),
+        "risk_score": risk_score,
         "risk_label": "High" if risk_score > 0.7 else "Medium" if risk_score > 0.4 else "Low",
         "total_impacted_files": total_impacted,
         "propagation_tree": tree,
@@ -148,7 +156,7 @@ async def get_propagation_tree(project_id: str, file_path: str, change_type: str
 
 async def _bfs_dependents(project_id: str, file_path: str, max_depth: int) -> dict:
     driver = get_neo4j_driver()
-    visited = set()
+    visited: set[str] = set()
 
     async def fetch_dependents(path: str, depth: int) -> list:
         if depth > max_depth or path in visited:
@@ -157,16 +165,20 @@ async def _bfs_dependents(project_id: str, file_path: str, max_depth: int) -> di
         async with driver.session() as session:
             result = await session.run(
                 "MATCH (dep:File {project_id: $pid})-[:IMPORTS]->(f:File {project_id: $pid, path: $fp}) "
-                "RETURN dep.path AS path",
+                "RETURN dep.path AS path, coalesce(dep.risk_score, 0.0) AS risk_score",
                 pid=project_id, fp=path
             )
-            deps = [r["path"] async for r in result]
+            deps = [{"path": r["path"], "risk_score": float(r["risk_score"] or 0.0)} async for r in result]
         children = []
         for dep in deps:
-            risk = "high" if depth == 1 else "medium" if depth == 2 else "low"
+            node_risk = dep["risk_score"]
+            risk_label = "High" if node_risk >= 0.7 else "Medium" if node_risk >= 0.4 else "Low"
             children.append({
-                "file": dep, "depth": depth, "risk": risk,
-                "dependents": await fetch_dependents(dep, depth + 1)
+                "file": dep["path"],
+                "depth": depth,
+                "risk_score": node_risk,
+                "risk": risk_label,
+                "dependents": await fetch_dependents(dep["path"], depth + 1),
             })
         return children
 
@@ -179,3 +191,18 @@ def _count_nodes(tree: dict) -> int:
     for dep in tree.get("dependents", []):
         count += 1 + _count_nodes(dep)
     return count
+
+
+def _weighted_risk(tree: dict, depth: int) -> float:
+    """Recursively sum depth-discounted risk scores across the propagation tree.
+
+    Each depth level is discounted by 0.5 (depth-1 = 1.0x, depth-2 = 0.5x, ...).
+    The root node itself is not counted (it is the change origin).
+    """
+    total = 0.0
+    discount = 0.5 ** (depth - 1)
+    for dep in tree.get("dependents", []):
+        node_risk = dep.get("risk_score", 0.3)  # default 0.3 if risk not scored yet
+        total += node_risk * discount
+        total += _weighted_risk(dep, depth + 1)
+    return total

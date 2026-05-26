@@ -38,15 +38,50 @@ async def _update_project_status(project_id: str, status: str, file_count: int =
     from app.database.postgres import AsyncSessionLocal
     from app.models.postgres.project import Project
     from sqlalchemy import select
+
+    # Pull live counts from Neo4j when the job succeeds
+    node_count = 0
+    edge_count = 0
+    primary_language: str | None = None
+    if status == "ready":
+        try:
+            from app.database.neo4j import get_neo4j_driver
+            driver = get_neo4j_driver()
+            async with driver.session() as neo_session:
+                nc = await (await neo_session.run(
+                    "MATCH (f:File {project_id: $pid}) RETURN count(f) AS c", pid=project_id
+                )).single()
+                node_count = nc["c"] if nc else 0
+
+                ec = await (await neo_session.run(
+                    "MATCH (:File {project_id: $pid})-[r:IMPORTS]->(:File {project_id: $pid}) RETURN count(r) AS c",
+                    pid=project_id
+                )).single()
+                edge_count = ec["c"] if ec else 0
+
+                lang_row = await (await neo_session.run(
+                    "MATCH (f:File {project_id: $pid}) WHERE f.language IS NOT NULL "
+                    "RETURN f.language AS lang, count(*) AS cnt ORDER BY cnt DESC LIMIT 1",
+                    pid=project_id
+                )).single()
+                primary_language = lang_row["lang"] if lang_row else None
+        except Exception:
+            pass  # counts remain 0 — non-fatal, dashboard still works
+
     async with AsyncSessionLocal() as db:
         result = await db.execute(select(Project).where(Project.id == project_id))
         project = result.scalar_one_or_none()
         if project:
             project.status = status
             project.total_files = file_count
+            project.total_nodes = node_count
+            project.total_edges = edge_count
+            if primary_language:
+                project.primary_language = primary_language
             project.error_message = error
             project.updated_at = datetime.utcnow()
             await db.commit()
+
 
 
 async def _update_job_db(project_id: str, progress: int, step: str):
