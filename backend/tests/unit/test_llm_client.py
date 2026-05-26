@@ -1,64 +1,23 @@
 """Unit tests for the LLM client routing and error behaviour.
 
-These tests mock httpx and litellm so nothing real is called.
+Conftest stubs all external services so no live infra is needed.
 """
 import asyncio
 import types
-import sys
 
 import pytest
 
-# ── Minimal stubs so the module can be imported in isolation ─────────────────
-if "litellm" not in sys.modules:
-    lit = types.SimpleNamespace()
-    async def _acompletion(**kwargs):
-        return types.SimpleNamespace(
-            choices=[types.SimpleNamespace(message=types.SimpleNamespace(content="{}"))],
-        )
-    lit.acompletion = _acompletion
-    lit.api_key = None
-    sys.modules["litellm"] = lit
-
-if "app.config" not in sys.modules:
-    cfg = types.SimpleNamespace(
-        openrouter_api_key="",
-        openrouter_base_url="https://openrouter.ai",
-        openrouter_model="gpt-4o-mini",
-        openrouter_fallback_models=[],
-        llm_model="gpt-4o",
-        embedding_model="text-embedding-3-small",
-        openai_api_key="sk-test",
-        secret_key="test",
-        allowed_origins="*",
-        ollama_url="",
-        ollama_model="llama3",
-    )
-    mod = types.ModuleType("app.config")
-    mod.settings = cfg
-    sys.modules["app.config"] = mod
-
-if "app.services.llm.output_parser" not in sys.modules:
-    op = types.ModuleType("app.services.llm.output_parser")
-    op.extract_json = lambda text: {}
-    op.validate_required_keys = lambda d, keys: True
-    sys.modules["app.services.llm.output_parser"] = op
-
-import structlog  # noqa: E402 — import after stubs
-
-# ── Import module under test ──────────────────────────────────────────────────
-from app.services.llm import client as llm_client  # noqa: E402
+import app.services.llm.client as llm_client
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _make_choice(content: str):
-    return types.SimpleNamespace(message=types.SimpleNamespace(content=content))
-
-
 def _make_response(content: str):
-    return types.SimpleNamespace(choices=[_make_choice(content)])
+    return types.SimpleNamespace(
+        choices=[types.SimpleNamespace(message=types.SimpleNamespace(content=content))]
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
