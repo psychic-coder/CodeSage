@@ -42,6 +42,7 @@ export default function GraphPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [filterLang, setFilterLang] = useState("");
+  const [filterRisk, setFilterRisk] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [focusDepth, setFocusDepth] = useState(2);
 
@@ -60,9 +61,14 @@ export default function GraphPage() {
   const filtered = useMemo(() => {
     let nodes = rawNodes;
     if (filterLang) nodes = nodes.filter(n => n.language === filterLang);
+    if (filterRisk) {
+        if (filterRisk === "high") nodes = nodes.filter(n => n.risk_score >= 0.7);
+        else if (filterRisk === "medium") nodes = nodes.filter(n => n.risk_score >= 0.4 && n.risk_score < 0.7);
+        else if (filterRisk === "low") nodes = nodes.filter(n => n.risk_score < 0.4);
+    }
     if (searchQuery) nodes = nodes.filter(n => n.path.toLowerCase().includes(searchQuery.toLowerCase()));
     return nodes;
-  }, [rawNodes, filterLang, searchQuery]);
+  }, [rawNodes, filterLang, filterRisk, searchQuery]);
 
   const filteredPaths = useMemo(() => new Set(filtered.map(n => n.path)), [filtered]);
 
@@ -153,6 +159,16 @@ export default function GraphPage() {
           }}>
             <option value="">All Languages</option>
             {languages.map(l => <option key={l} value={l}>{l}</option>)}
+          </select>
+          <select value={filterRisk} onChange={e => setFilterRisk(e.target.value)} style={{
+            padding: "var(--space-1) var(--space-3)", borderRadius: "var(--radius-md)",
+            background: "var(--color-surface-2)", border: "1px solid var(--color-border)",
+            color: "var(--color-text)", fontSize: "var(--text-xs)", outline: "none"
+          }}>
+            <option value="">All Risks</option>
+            <option value="high">High Risk</option>
+            <option value="medium">Medium Risk</option>
+            <option value="low">Low Risk</option>
           </select>
           <select value={focusDepth} onChange={e => setFocusDepth(Number(e.target.value))} style={{
             padding: "var(--space-1) var(--space-3)", borderRadius: "var(--radius-md)",
