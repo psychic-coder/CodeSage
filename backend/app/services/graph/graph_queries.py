@@ -7,10 +7,14 @@ async def get_graph_nodes(project_id: str, skip: int = 0, limit: int = 100):
     driver = get_neo4j_driver()
     async with driver.session() as session:
         result = await session.run(
-            "MATCH (f:File {project_id: $pid}) RETURN f SKIP $skip LIMIT $limit",
+            "MATCH (f:File {project_id: $pid}) "
+            "RETURN f.path AS path, f.name AS name, f.extension AS extension, f.language AS language, "
+            "f.size_bytes AS size_bytes, f.lines_of_code AS lines_of_code, f.complexity_score AS complexity_score, "
+            "f.risk_score AS risk_score, f.project_id AS project_id "
+            "SKIP $skip LIMIT $limit",
             pid=project_id, skip=skip, limit=limit
         )
-        return [dict(r["f"]) async for r in result]
+        return [dict(r) async for r in result]
 
 
 async def get_graph_edges(project_id: str, skip: int = 0, limit: int = 500):
@@ -18,10 +22,10 @@ async def get_graph_edges(project_id: str, skip: int = 0, limit: int = 500):
     async with driver.session() as session:
         result = await session.run(
             "MATCH (a:File {project_id: $pid})-[r:IMPORTS]->(b:File {project_id: $pid}) "
-            "RETURN a.path AS source, b.path AS target SKIP $skip LIMIT $limit",
+            "RETURN a.path AS source, b.path AS target, type(r) AS type SKIP $skip LIMIT $limit",
             pid=project_id, skip=skip, limit=limit
         )
-        return [{"source": r["source"], "target": r["target"]} async for r in result]
+        return [{"source": r["source"], "target": r["target"], "type": r["type"]} async for r in result]
 
 
 async def get_graph_stats(project_id: str):
@@ -49,10 +53,10 @@ async def get_subgraph(project_id: str, file_path: str, hops: int = 2):
     async with driver.session() as session:
         result = await session.run(
             "MATCH path = (f:File {project_id: $pid, path: $fp})-[:IMPORTS*0..$hops]-(neighbor) "
-            "RETURN DISTINCT neighbor.path AS path, neighbor.risk_score AS risk_score",
+            "RETURN DISTINCT neighbor.path AS path, neighbor.risk_score AS risk_score, neighbor.language AS language",
             pid=project_id, fp=file_path, hops=hops
         )
-        return [{"path": r["path"], "risk_score": r["risk_score"]} async for r in result]
+        return [{"path": r["path"], "risk_score": r["risk_score"], "language": r.get("language")} async for r in result]
 
 
 async def get_propagation_tree(project_id: str, file_path: str, change_type: str, max_depth: int = 5):

@@ -42,6 +42,7 @@ def parse_file(file_path: str, repo_root: str) -> dict | None:
                     "functions": ts_result.get("functions", []),
                     "classes": ts_result.get("classes", []),
                     "exports": ts_result.get("exports", []),
+                    "calls": ts_result.get("calls", []),
                     "complexity": ts_result.get("complexity", 1),
                 })
             else:
@@ -56,11 +57,9 @@ def parse_file(file_path: str, repo_root: str) -> dict | None:
                     "functions": ts_result.get("functions", []),
                     "classes": ts_result.get("classes", []),
                     "exports": ts_result.get("exports", []),
+                    "calls": ts_result.get("calls", []),
                     "complexity": ts_result.get("complexity", 1),
                 })
-                # tree-sitter wrapper may not extract calls; ensure calls extraction
-                if "calls" not in result:
-                    _extract_calls_python(source, result)
             else:
                 _parse_py(source, result)
     except Exception:

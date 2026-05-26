@@ -1,4 +1,5 @@
 from app.database.neo4j import get_neo4j_driver
+from app.services.parsing.call_graph_builder import build_call_graph
 import uuid
 
 
@@ -144,22 +145,14 @@ async def build_graph(project_id: str, parsed_files: list[dict]):
             )
 
         # Build CALLS relationships from parsed call lists
-        call_rels = []
-        for pf in parsed_files:
-            for c in pf.get("calls", []):
-                call_rels.append({
-                    "pid": project_id,
-                    "file_path": pf["path"],
-                    "caller": c.get("caller"),
-                    "callee": c.get("callee"),
-                    "line": c.get("line", 0)
-                })
+        call_rels = build_call_graph(parsed_files)
 
         if call_rels:
             await session.run(
                 "UNWIND $rels AS r "
-                "MATCH (a:Function {project_id: r.pid, name: r.caller, file_path: r.file_path}) "
-                "MATCH (b:Function {project_id: r.pid, name: r.callee}) "
+                "MATCH (a:Function {project_id: $pid, file_path: r.caller_file_path, name: r.caller}) "
+                "MATCH (b:Function {project_id: $pid, file_path: r.callee_file_path, name: r.callee}) "
                 "MERGE (a)-[rel:CALLS]->(b) SET rel.line = r.line",
+                pid=project_id,
                 rels=call_rels
             )
