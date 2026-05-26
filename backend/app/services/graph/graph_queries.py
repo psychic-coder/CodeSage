@@ -10,7 +10,9 @@ from app.services.llm.prompts import PROPAGATION_ANALYSIS_PROMPT
 
 
 def _cache_key(project_id: str, query_type: str, params: dict) -> str:
-    params_hash = hashlib.sha256(json.dumps(params, sort_keys=True, default=str).encode("utf-8")).hexdigest()
+    params_hash = hashlib.sha256(
+        json.dumps(params, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()
     return f"graph:{project_id}:{query_type}:{params_hash}"
 
 
@@ -23,10 +25,16 @@ async def _cache_get(project_id: str, query_type: str, params: dict):
         return None
 
 
-async def _cache_set(project_id: str, query_type: str, params: dict, value, ttl: int = 3600):
+async def _cache_set(
+    project_id: str, query_type: str, params: dict, value, ttl: int = 3600
+):
     try:
         redis = get_redis()
-        await redis.setex(_cache_key(project_id, query_type, params), ttl, json.dumps(value, default=str))
+        await redis.setex(
+            _cache_key(project_id, query_type, params),
+            ttl,
+            json.dumps(value, default=str),
+        )
     except Exception:
         pass
 
@@ -44,7 +52,9 @@ async def get_graph_nodes(project_id: str, skip: int = 0, limit: int = 100):
             "f.risk_score AS risk_score, f.project_id AS project_id, "
             "COUNT { (f)<-[:IMPORTS]-() } AS in_degree, COUNT { (f)-[:IMPORTS]->() } AS out_degree "
             "SKIP $skip LIMIT $limit",
-            pid=project_id, skip=skip, limit=limit
+            pid=project_id,
+            skip=skip,
+            limit=limit,
         )
         rows = [dict(r) async for r in result]
     await _cache_set(project_id, "nodes", {"skip": skip, "limit": limit}, rows)
@@ -60,9 +70,14 @@ async def get_graph_edges(project_id: str, skip: int = 0, limit: int = 500):
         result = await session.run(
             "MATCH (a:File {project_id: $pid})-[r:IMPORTS]->(b:File {project_id: $pid}) "
             "RETURN a.path AS source, b.path AS target, type(r) AS type SKIP $skip LIMIT $limit",
-            pid=project_id, skip=skip, limit=limit
+            pid=project_id,
+            skip=skip,
+            limit=limit,
         )
-        rows = [{"source": r["source"], "target": r["target"], "type": r["type"]} async for r in result]
+        rows = [
+            {"source": r["source"], "target": r["target"], "type": r["type"]}
+            async for r in result
+        ]
     await _cache_set(project_id, "edges", {"skip": skip, "limit": limit}, rows)
     return rows
 
@@ -73,18 +88,27 @@ async def get_graph_stats(project_id: str):
         return cached
     driver = get_neo4j_driver()
     async with driver.session() as session:
-        node_count = (await (await session.run(
-            "MATCH (f:File {project_id: $pid}) RETURN count(f) AS c", pid=project_id
-        )).single())["c"]
-        edge_count = (await (await session.run(
-            "MATCH (:File {project_id: $pid})-[r:IMPORTS]->(:File {project_id: $pid}) RETURN count(r) AS c",
-            pid=project_id
-        )).single())["c"]
+        node_count = (
+            await (
+                await session.run(
+                    "MATCH (f:File {project_id: $pid}) RETURN count(f) AS c",
+                    pid=project_id,
+                )
+            ).single()
+        )["c"]
+        edge_count = (
+            await (
+                await session.run(
+                    "MATCH (:File {project_id: $pid})-[r:IMPORTS]->(:File {project_id: $pid}) RETURN count(r) AS c",
+                    pid=project_id,
+                )
+            ).single()
+        )["c"]
         top_files = await session.run(
             "MATCH (f:File {project_id: $pid}) "
             "WITH f, COUNT { (f)<-[:IMPORTS]-() } AS in_deg "
             "ORDER BY in_deg DESC LIMIT 10 RETURN f.path AS path, in_deg",
-            pid=project_id
+            pid=project_id,
         )
         top = [{"path": r["path"], "in_degree": r["in_deg"]} async for r in top_files]
     result = {"node_count": node_count, "edge_count": edge_count, "top_files": top}
@@ -102,15 +126,30 @@ async def get_subgraph(project_id: str, file_path: str, hops: int = 2):
         result = await session.run(
             "MATCH path = (f:File {project_id: $pid, path: $fp})-[:IMPORTS*0..$hops]-(neighbor) "
             "RETURN DISTINCT neighbor.path AS path, neighbor.risk_score AS risk_score, neighbor.language AS language",
-            pid=project_id, fp=file_path, hops=hops
+            pid=project_id,
+            fp=file_path,
+            hops=hops,
         )
-        rows = [{"path": r["path"], "risk_score": r["risk_score"], "language": r.get("language")} async for r in result]
+        rows = [
+            {
+                "path": r["path"],
+                "risk_score": r["risk_score"],
+                "language": r.get("language"),
+            }
+            async for r in result
+        ]
     await _cache_set(project_id, "subgraph", params, rows)
     return rows
 
 
-async def get_propagation_tree(project_id: str, file_path: str, change_type: str, max_depth: int = 5):
-    params = {"file_path": file_path, "change_type": change_type, "max_depth": max_depth}
+async def get_propagation_tree(
+    project_id: str, file_path: str, change_type: str, max_depth: int = 5
+):
+    params = {
+        "file_path": file_path,
+        "change_type": change_type,
+        "max_depth": max_depth,
+    }
     cached = await _cache_get(project_id, "propagation", params)
     if cached is not None:
         return cached
@@ -119,7 +158,8 @@ async def get_propagation_tree(project_id: str, file_path: str, change_type: str
         result = await session.run(
             "MATCH (f:File {project_id: $pid, path: $fp}) "
             "RETURN f.path AS path, f.risk_score AS risk_score",
-            pid=project_id, fp=file_path
+            pid=project_id,
+            fp=file_path,
         )
         root = await result.single()
         if not root:
@@ -145,10 +185,14 @@ async def get_propagation_tree(project_id: str, file_path: str, change_type: str
     result = {
         "target_file": file_path,
         "risk_score": risk_score,
-        "risk_label": "High" if risk_score > 0.7 else "Medium" if risk_score > 0.4 else "Low",
+        "risk_label": "High"
+        if risk_score > 0.7
+        else "Medium"
+        if risk_score > 0.4
+        else "Low",
         "total_impacted_files": total_impacted,
         "propagation_tree": tree,
-        "analysis": explanation
+        "analysis": explanation,
     }
     await _cache_set(project_id, "propagation", params, result)
     return result
@@ -166,20 +210,28 @@ async def _bfs_dependents(project_id: str, file_path: str, max_depth: int) -> di
             result = await session.run(
                 "MATCH (dep:File {project_id: $pid})-[:IMPORTS]->(f:File {project_id: $pid, path: $fp}) "
                 "RETURN dep.path AS path, coalesce(dep.risk_score, 0.0) AS risk_score",
-                pid=project_id, fp=path
+                pid=project_id,
+                fp=path,
             )
-            deps = [{"path": r["path"], "risk_score": float(r["risk_score"] or 0.0)} async for r in result]
+            deps = [
+                {"path": r["path"], "risk_score": float(r["risk_score"] or 0.0)}
+                async for r in result
+            ]
         children = []
         for dep in deps:
             node_risk = dep["risk_score"]
-            risk_label = "High" if node_risk >= 0.7 else "Medium" if node_risk >= 0.4 else "Low"
-            children.append({
-                "file": dep["path"],
-                "depth": depth,
-                "risk_score": node_risk,
-                "risk": risk_label,
-                "dependents": await fetch_dependents(dep["path"], depth + 1),
-            })
+            risk_label = (
+                "High" if node_risk >= 0.7 else "Medium" if node_risk >= 0.4 else "Low"
+            )
+            children.append(
+                {
+                    "file": dep["path"],
+                    "depth": depth,
+                    "risk_score": node_risk,
+                    "risk": risk_label,
+                    "dependents": await fetch_dependents(dep["path"], depth + 1),
+                }
+            )
         return children
 
     dependents = await fetch_dependents(file_path, 1)

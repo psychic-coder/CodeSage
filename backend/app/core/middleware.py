@@ -1,9 +1,11 @@
-import time, structlog
-from starlette.middleware.base import BaseHTTPMiddleware
+import time
+
+import structlog
 from fastapi import Request
 from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+
 from app.database.redis import get_redis
-import time
 
 logger = structlog.get_logger()
 
@@ -13,8 +15,13 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         start = time.time()
         response = await call_next(request)
         ms = round((time.time() - start) * 1000, 2)
-        logger.info("request", method=request.method, path=request.url.path,
-                    status=response.status_code, duration_ms=ms)
+        logger.info(
+            "request",
+            method=request.method,
+            path=request.url.path,
+            status=response.status_code,
+            duration_ms=ms,
+        )
         return response
 
 
@@ -32,21 +39,25 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
         # Skip docs and ws
-        if path.startswith('/docs') or path.startswith('/openapi') or path.startswith('/ws'):
+        if (
+            path.startswith("/docs")
+            or path.startswith("/openapi")
+            or path.startswith("/ws")
+        ):
             return await call_next(request)
 
-        if path.startswith('/api/v1/analysis'):
+        if path.startswith("/api/v1/analysis"):
             limit, window, category = 20, 60, "analysis"
-        elif path.startswith('/api/v1/query'):
+        elif path.startswith("/api/v1/query"):
             limit, window, category = 60, 60, "query"
-        elif path.startswith('/api/v1/ingest'):
+        elif path.startswith("/api/v1/ingest"):
             limit, window, category = 5, 3600, "ingest"
         else:
             limit, window, category = 60, 60, "default"
 
         # derive key
-        auth = request.headers.get('authorization', '')
-        client_ip = request.client.host if request.client else 'anon'
+        auth = request.headers.get("authorization", "")
+        client_ip = request.client.host if request.client else "anon"
         if auth:
             key_id = f"{auth.split()[-1]}:{client_ip}"
         else:
@@ -66,7 +77,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             await redis.expire(rkey, window + 5)
             if cnt > limit:
                 return JSONResponse(
-                    {"error": {"code": "RATE_LIMIT_EXCEEDED", "message": "Rate limit exceeded"}},
+                    {
+                        "error": {
+                            "code": "RATE_LIMIT_EXCEEDED",
+                            "message": "Rate limit exceeded",
+                        }
+                    },
                     status_code=429,
                     headers={"Retry-After": str(window)},
                 )

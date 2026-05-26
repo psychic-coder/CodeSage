@@ -1,16 +1,19 @@
-from app.services.ingestion.github_ingester import clone_github_repo
-from app.services.ingestion.zip_ingester import extract_zip
-from app.services.ingestion.local_ingester import validate_local_path
-from app.services.ingestion.file_filter import filter_files
-from app.services.parsing.ast_parser import parse_file
-from app.services.parsing.import_resolver import resolve_all_imports
-from app.services.graph.graph_builder import build_graph
-from app.services.graph.risk_scorer import score_all_nodes
-from app.services.embeddings.code_embedder import embed_all_files
 from pathlib import Path
 
+from app.services.embeddings.code_embedder import embed_all_files
+from app.services.graph.graph_builder import build_graph
+from app.services.graph.risk_scorer import score_all_nodes
+from app.services.ingestion.file_filter import filter_files
+from app.services.ingestion.github_ingester import clone_github_repo
+from app.services.ingestion.local_ingester import validate_local_path
+from app.services.ingestion.zip_ingester import extract_zip
+from app.services.parsing.ast_parser import parse_file
+from app.services.parsing.import_resolver import resolve_all_imports
 
-async def run_ingestion_pipeline(project_id: str, source_type: str, source_path: str, report_progress):
+
+async def run_ingestion_pipeline(
+    project_id: str, source_type: str, source_path: str, report_progress
+):
     if source_type == "github":
         local_path = await clone_github_repo(source_path)
     elif source_type == "zip":

@@ -1,6 +1,8 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from app.database.redis import get_redis
 import json
+
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+
+from app.database.redis import get_redis
 
 ws_router = APIRouter()
 

@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import json
 
+import structlog
+
 from app.database.neo4j import get_neo4j_driver
 from app.services.llm.client import llm_complete_json_with_keys
 from app.services.llm.prompts import ARCHITECTURE_ANALYSIS_PROMPT
-import structlog
 
 logger = structlog.get_logger()
 
@@ -30,7 +31,11 @@ async def analyze_architecture(project_id: str) -> dict:
             pid=project_id,
         )
         findings["god_files"] = [
-            {"path": row["path"], "in_degree": row["in_deg"], "out_degree": row["out_deg"]}
+            {
+                "path": row["path"],
+                "in_degree": row["in_deg"],
+                "out_degree": row["out_deg"],
+            }
             async for row in result
         ]
 
@@ -39,7 +44,9 @@ async def analyze_architecture(project_id: str) -> dict:
             "MATCH (b)-[:IMPORTS]->(a) RETURN a.path AS a, b.path AS b",
             pid=project_id,
         )
-        findings["tight_coupling"] = [{"file_a": row["a"], "file_b": row["b"]} async for row in result]
+        findings["tight_coupling"] = [
+            {"file_a": row["a"], "file_b": row["b"]} async for row in result
+        ]
 
         result = await session.run(
             "MATCH (f:File {project_id: $pid}) "
@@ -55,16 +62,30 @@ async def analyze_architecture(project_id: str) -> dict:
             "RETURN m.name AS name, count(f) AS usage ORDER BY usage DESC LIMIT 20",
             pid=project_id,
         )
-        findings["external_deps"] = [{"name": row["name"], "usage": row["usage"]} async for row in result]
+        findings["external_deps"] = [
+            {"name": row["name"], "usage": row["usage"]} async for row in result
+        ]
 
     try:
         result = await llm_complete_json_with_keys(
-            ARCHITECTURE_ANALYSIS_PROMPT.format(analysis_data=json.dumps(findings, indent=2)),
-            required_keys=["overall_health_score", "health_label", "issues", "strengths", "architecture_pattern"],
+            ARCHITECTURE_ANALYSIS_PROMPT.format(
+                analysis_data=json.dumps(findings, indent=2)
+            ),
+            required_keys=[
+                "overall_health_score",
+                "health_label",
+                "issues",
+                "strengths",
+                "architecture_pattern",
+            ],
             max_tokens=2000,
             retries=2,
         )
         return result
     except Exception as e:
         logger.error("llm_synthesis_failed", error=str(e), query_type="architecture")
-        return {"findings": findings, "error": "LLM synthesis failed", "details": str(e)}
+        return {
+            "findings": findings,
+            "error": "LLM synthesis failed",
+            "details": str(e),
+        }
