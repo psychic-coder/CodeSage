@@ -178,6 +178,7 @@ const getLayoutedElements = (
 function GraphPageContent() {
   const { projectId } = useParams<{ projectId: string }>();
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
+  const [showHelp, setShowHelp] = useState(false);
 
   // Filters
   const [filterLang, setFilterLang] = useState("");
@@ -750,6 +751,22 @@ function GraphPageContent() {
           >
             🖼 PNG
           </button>
+
+          <button
+            onClick={() => setShowHelp(true)}
+            style={{
+              padding: "var(--space-1) var(--space-3)",
+              borderRadius: "var(--radius-md)",
+              background: "var(--color-primary-highlight)",
+              border: "1px solid var(--color-primary)",
+              color: "var(--color-primary)",
+              fontSize: "var(--text-xs)",
+              cursor: "pointer",
+              fontWeight: 600,
+            }}
+          >
+            ℹ️ Help
+          </button>
         </div>
       </div>
 
@@ -1228,6 +1245,200 @@ function GraphPageContent() {
           </span>
         </span>
       </div>
+
+      {/* Help Modal */}
+      {showHelp && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(13,17,23,0.8)",
+            zIndex: 100,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            backdropFilter: "blur(4px)",
+          }}
+          onClick={() => setShowHelp(false)}
+        >
+          <div
+            style={{
+              background: "var(--color-surface)",
+              padding: "var(--space-6)",
+              borderRadius: "var(--radius-xl)",
+              border: "1px solid var(--color-border)",
+              maxWidth: 600,
+              width: "100%",
+              maxHeight: "80vh",
+              overflowY: "auto",
+              boxShadow: "var(--shadow-lg)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+            className="animate-fadeIn"
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                marginBottom: "var(--space-4)",
+              }}
+            >
+              <h2
+                style={{
+                  fontSize: "var(--text-lg)",
+                  fontWeight: 700,
+                  fontFamily: "var(--font-display)",
+                }}
+              >
+                Dependency Graph Features
+              </h2>
+              <button
+                onClick={() => setShowHelp(false)}
+                style={{ color: "var(--color-text-muted)" }}
+              >
+                ✕
+              </button>
+            </div>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "var(--space-4)",
+                fontSize: "var(--text-sm)",
+                color: "var(--color-text)",
+              }}
+            >
+              <div
+                style={{
+                  background: "var(--color-surface-2)",
+                  padding: "var(--space-3)",
+                  borderRadius: "var(--radius-md)",
+                }}
+              >
+                <strong style={{ color: "var(--color-text)" }}>
+                  ↕/↔ Auto-Layout:
+                </strong>
+                <p
+                  style={{ color: "var(--color-text-muted)", marginTop: "4px" }}
+                >
+                  Switches the graph between a top-to-bottom and left-to-right
+                  layout to reveal the true directional dependency flow instead
+                  of a clustered grid.
+                </p>
+              </div>
+              <div
+                style={{
+                  background: "var(--color-surface-2)",
+                  padding: "var(--space-3)",
+                  borderRadius: "var(--radius-md)",
+                }}
+              >
+                <strong style={{ color: "var(--color-text)" }}>
+                  🔥 Heatmap Mode:
+                </strong>
+                <p
+                  style={{ color: "var(--color-text-muted)", marginTop: "4px" }}
+                >
+                  Color-codes all files based on their risk score (green = low
+                  risk, red = high risk). Useful for quickly spotting technical
+                  debt hotspots in a large codebase.
+                </p>
+              </div>
+              <div
+                style={{
+                  background: "var(--color-surface-2)",
+                  padding: "var(--space-3)",
+                  borderRadius: "var(--radius-md)",
+                }}
+              >
+                <strong style={{ color: "var(--color-text)" }}>
+                  📁 Group Dirs:
+                </strong>
+                <p
+                  style={{ color: "var(--color-text-muted)", marginTop: "4px" }}
+                >
+                  Collapses individual files into their parent directories to
+                  reduce graph clutter. You can click on a directory node to
+                  expand it in-place without losing context.
+                </p>
+              </div>
+              <div
+                style={{
+                  background: "var(--color-surface-2)",
+                  padding: "var(--space-3)",
+                  borderRadius: "var(--radius-md)",
+                }}
+              >
+                <strong style={{ color: "var(--color-text)" }}>
+                  ⚡ Click-to-Propagate:
+                </strong>
+                <p
+                  style={{ color: "var(--color-text-muted)", marginTop: "4px" }}
+                >
+                  Click on any file node to run an AI-powered propagation
+                  analysis. It instantly highlights all downstream files that
+                  might break if you make changes to the selected file.
+                </p>
+              </div>
+              <div
+                style={{
+                  background: "var(--color-surface-2)",
+                  padding: "var(--space-3)",
+                  borderRadius: "var(--radius-md)",
+                }}
+              >
+                <strong style={{ color: "var(--color-text)" }}>
+                  🔄 Cycles:
+                </strong>
+                <p
+                  style={{ color: "var(--color-text-muted)", marginTop: "4px" }}
+                >
+                  The backend automatically detects circular import
+                  dependencies. Files trapped in a cycle have a dashed purple
+                  border. You can click the &quot;cycles&quot; chip in the stats
+                  bar to filter the graph specifically to view cycles.
+                </p>
+              </div>
+              <div
+                style={{
+                  background: "var(--color-surface-2)",
+                  padding: "var(--space-3)",
+                  borderRadius: "var(--radius-md)",
+                }}
+              >
+                <strong style={{ color: "var(--color-text)" }}>
+                  🔍 Isolated:
+                </strong>
+                <p
+                  style={{ color: "var(--color-text-muted)", marginTop: "4px" }}
+                >
+                  Highlights &quot;dead code&quot; candidates—files that import
+                  nothing and are imported by nothing. Click the
+                  &quot;isolated&quot; chip to quickly locate them.
+                </p>
+              </div>
+              <div
+                style={{
+                  background: "var(--color-surface-2)",
+                  padding: "var(--space-3)",
+                  borderRadius: "var(--radius-md)",
+                }}
+              >
+                <strong style={{ color: "var(--color-text)" }}>
+                  📥 CSV & 🖼 PNG Export:
+                </strong>
+                <p
+                  style={{ color: "var(--color-text-muted)", marginTop: "4px" }}
+                >
+                  Download the current graph data as a CSV spreadsheet or take a
+                  snapshot of the visible viewport as a PNG image to share in
+                  pull requests.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
