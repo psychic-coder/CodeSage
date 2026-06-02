@@ -142,6 +142,22 @@ async def get_subgraph(project_id: str, file_path: str, hops: int = 2):
     return rows
 
 
+async def get_circular_deps(project_id: str):
+    cached = await _cache_get(project_id, "cycles", {})
+    if cached is not None:
+        return cached
+    driver = get_neo4j_driver()
+    async with driver.session() as session:
+        result = await session.run(
+            "MATCH path = (f:File {project_id: $pid})-[:IMPORTS*2..10]->(f) "
+            "RETURN [n IN nodes(path) | n.path] AS cycle LIMIT 50",
+            pid=project_id,
+        )
+        cycles = [r["cycle"] async for r in result]
+    await _cache_set(project_id, "cycles", {}, cycles)
+    return cycles
+
+
 async def get_propagation_tree(
     project_id: str, file_path: str, change_type: str, max_depth: int = 5
 ):
