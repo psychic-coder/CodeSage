@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { projectsAPI, ingestAPI } from "@/lib/api";
 import { JobProgress } from "@/components/shared/JobProgress";
@@ -32,6 +33,7 @@ function HealthRing({ score }: { score: number }) {
 }
 
 export default function DashboardPage() {
+  const router = useRouter();
   const qc = useQueryClient();
   const { data, isLoading } = useQuery<{ data: Project[] }>({ queryKey: ["projects"], queryFn: () => projectsAPI.list() });
   const projects = data?.data || [];
@@ -45,6 +47,23 @@ export default function DashboardPage() {
   const [jobId, setJobId] = useState<string | null>(null);
   const [formLoading, setFormLoading] = useState(false);
   const [localPath, setLocalPath] = useState("");
+
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  async function handleDeleteProject(id: string, e: React.MouseEvent) {
+    e.stopPropagation();
+    setDeletingId(id);
+    try {
+      await projectsAPI.delete(id);
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      setConfirmDeleteId(null);
+    } catch (err) {
+      console.error("Failed to delete project", err);
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   async function handleCreateProject() {
     if (!newProjectName.trim()) return;
@@ -134,7 +153,7 @@ export default function DashboardPage() {
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "var(--space-4)" }}>
           {projects.map(p => (
-            <Link key={p.id} href={`/dashboard/${p.id}`} style={{ textDecoration: "none" }}>
+            <div key={p.id} onClick={() => router.push(`/dashboard/${p.id}`)} style={{ textDecoration: "none" }}>
               <div style={{
                 padding: "var(--space-5)", borderRadius: "var(--radius-lg)",
                 background: "var(--color-surface)", border: "1px solid var(--color-border)",
@@ -145,14 +164,33 @@ export default function DashboardPage() {
                 onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = "var(--color-border)"; (e.currentTarget as HTMLDivElement).style.boxShadow = "none"; }}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "var(--space-3)" }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ flex: 1, minWidth: 0, paddingRight: "var(--space-2)" }}>
                     <h3 style={{ fontWeight: 700, fontSize: "var(--text-base)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</h3>
                     {p.description && <p style={{ color: "var(--color-text-muted)", fontSize: "var(--text-xs)", marginTop: "var(--space-1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.description}</p>}
                   </div>
-                  {p.status === "ready" && <HealthRing score={70} />}
-                  {p.status === "processing" && <span style={{ fontSize: "var(--text-xs)", color: "var(--color-warning)", background: "var(--color-warning-highlight)", padding: "2px 8px", borderRadius: "var(--radius-full)" }}>Processing</span>}
-                  {p.status === "failed" && <span style={{ fontSize: "var(--text-xs)", color: "var(--color-error)", background: "var(--color-error-highlight)", padding: "2px 8px", borderRadius: "var(--radius-full)" }}>Failed</span>}
-                  {p.status === "pending" && <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)", background: "var(--color-surface-offset)", padding: "2px 8px", borderRadius: "var(--radius-full)" }}>Pending</span>}
+                  {confirmDeleteId === p.id ? (
+                    <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center", background: "var(--color-surface-offset)", padding: "4px 8px", borderRadius: "var(--radius-md)" }} onClick={e => e.stopPropagation()}>
+                      <span style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-text)" }}>Delete?</span>
+                      <button onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); }} style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)", padding: "2px 6px", borderRadius: "var(--radius-sm)", background: "var(--color-surface-2)" }} disabled={deletingId === p.id}>Cancel</button>
+                      <button onClick={(e) => handleDeleteProject(p.id, e)} style={{ fontSize: "var(--text-xs)", color: "white", padding: "2px 6px", borderRadius: "var(--radius-sm)", background: "var(--color-error)", opacity: deletingId === p.id ? 0.6 : 1 }} disabled={deletingId === p.id}>{deletingId === p.id ? "..." : "Confirm"}</button>
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(p.id); }}
+                        style={{ background: "transparent", border: "none", color: "var(--color-text-muted)", cursor: "pointer", fontSize: "1.1rem", padding: "2px", opacity: 0.6, transition: "opacity 0.2s, color 0.2s" }}
+                        onMouseEnter={e => { e.currentTarget.style.opacity = "1"; e.currentTarget.style.color = "var(--color-error)"; }}
+                        onMouseLeave={e => { e.currentTarget.style.opacity = "0.6"; e.currentTarget.style.color = "var(--color-text-muted)"; }}
+                        title="Delete Project"
+                      >
+                        🗑️
+                      </button>
+                      {p.status === "ready" && <HealthRing score={70} />}
+                      {p.status === "processing" && <span style={{ fontSize: "var(--text-xs)", color: "var(--color-warning)", background: "var(--color-warning-highlight)", padding: "2px 8px", borderRadius: "var(--radius-full)" }}>Processing</span>}
+                      {p.status === "failed" && <span style={{ fontSize: "var(--text-xs)", color: "var(--color-error)", background: "var(--color-error-highlight)", padding: "2px 8px", borderRadius: "var(--radius-full)" }}>Failed</span>}
+                      {p.status === "pending" && <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)", background: "var(--color-surface-offset)", padding: "2px 8px", borderRadius: "var(--radius-full)" }}>Pending</span>}
+                    </div>
+                  )}
                 </div>
 
                 <div style={{ display: "flex", gap: "var(--space-4)", marginTop: "var(--space-3)", flexWrap: "wrap" }}>
@@ -166,7 +204,7 @@ export default function DashboardPage() {
                   <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)" }}>🔗 {p.total_nodes} nodes</span>
                 </div>
               </div>
-            </Link>
+            </div>
           ))}
         </div>
       )}
