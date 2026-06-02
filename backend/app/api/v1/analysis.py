@@ -2,7 +2,7 @@ import hashlib
 import json
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
@@ -91,6 +91,36 @@ async def architecture(
         lambda: analyze_architecture(project_id),
     )
     return AnalysisResponse(data=data, cached=cached)
+
+
+@router.post("/architecture/{project_id}/refresh", response_model=AnalysisResponse)
+async def architecture_refresh(
+    project_id: str, cu=Depends(get_current_user), db: AsyncSession = Depends(get_db)
+):
+    from app.services.intelligence.architecture_analyzer import analyze_architecture
+
+    await db.execute(
+        delete(AnalysisCache).where(
+            AnalysisCache.project_id == project_id,
+            AnalysisCache.query_type == "architecture"
+        )
+    )
+    await db.commit()
+
+    data = await analyze_architecture(project_id)
+    # Save the fresh data to cache manually so it behaves exactly like _cached
+    qhash = hashlib.sha256(f"{project_id}:architecture".encode()).hexdigest()
+    db.add(
+        AnalysisCache(
+            project_id=project_id,
+            query_type="architecture",
+            query_hash=qhash,
+            result=data,
+        )
+    )
+    await db.commit()
+
+    return AnalysisResponse(data=data, cached=False)
 
 
 @router.get("/improvements/{project_id}", response_model=AnalysisResponse)

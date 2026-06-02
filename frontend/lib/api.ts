@@ -67,6 +67,8 @@ export const analysisAPI = {
     api.post("/analysis/propagation", { project_id, file_path, change_type }),
   architecture: (project_id: string) =>
     api.get(`/analysis/architecture/${project_id}`),
+  architectureRefresh: (project_id: string) =>
+    api.post(`/analysis/architecture/${project_id}/refresh`),
   improvements: (project_id: string, categories?: string) =>
     api.get(`/analysis/improvements/${project_id}`, { params: { categories } }),
   recommendations: (project_id: string) =>
