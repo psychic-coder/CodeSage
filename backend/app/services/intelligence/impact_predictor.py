@@ -1,33 +1,159 @@
+import uuid
 import structlog
 
 from app.services.graph.impact_calculator import bfs_impact
 from app.services.llm.client import llm_complete_json_with_keys
-from app.services.llm.output_parser import sanitize_user_text
-from app.services.llm.prompts import IMPACT_INTENT_PROMPT, IMPACT_SYNTHESIS_PROMPT
+from app.services.llm.output_parser import sanitize_user_text, clean_for_prompt
+from app.services.llm.prompts import (
+    IMPACT_CLASSIFIER_PROMPT,
+    IMPACT_SYNTHESIS_PROMPT,
+    TECH_INTEGRATION_PROMPT,
+    ARCHITECTURE_QUESTION_PROMPT,
+    CLARIFICATION_SYNTHESIS_PROMPT
+)
 from app.services.rag.context_builder import build_context
 from app.services.rag.retriever import hybrid_retrieve
 
 logger = structlog.get_logger()
 
+# In-memory store for sessions (reset on restart).
+# For production persistence, we would use Redis.
+_SESSION_STORE = {}
 
-async def predict_impact(project_id: str, feature_description: str) -> dict:
+async def analyze_impact(
+    project_id: str, 
+    feature_description: str,
+    session_id: str | None = None,
+    conversation_history: list[dict] | None = None
+) -> dict:
     feature_description = sanitize_user_text(feature_description)
     if not feature_description:
-        return {"error": "Feature description too vague — please be more specific"}
+        return {"error": "Feature description is empty"}
 
-    intent = await llm_complete_json_with_keys(
-        IMPACT_INTENT_PROMPT.format(feature_description=feature_description),
-        required_keys=[
-            "confidence",
-            "primary_domain",
-            "entities_affected",
-            "action_types",
-            "keywords",
-        ],
+    # If it's an ongoing session
+    if session_id and conversation_history:
+        return await _handle_clarification_synthesis(
+            project_id, 
+            feature_description, 
+            session_id, 
+            conversation_history
+        )
+
+    clean_query = clean_for_prompt(feature_description)
+
+    classification = await llm_complete_json_with_keys(
+        IMPACT_CLASSIFIER_PROMPT.format(query=clean_query),
+        required_keys=["type"]
     )
-    if float(intent.get("confidence", 0.5)) < 0.4:
-        return {"error": "Feature description too vague — please be more specific"}
+    
+    query_type = classification.get("type", "code_change")
+    logger.info("impact_classification", query_type=query_type, confidence=classification.get("confidence"))
 
+    if query_type == "needs_clarification":
+        return _handle_needs_clarification(classification)
+    elif query_type == "tech_integration":
+        return await _handle_tech_integration(project_id, clean_query)
+    elif query_type in ("architecture_question", "process_question"):
+        return await _handle_architecture_question(project_id, clean_query)
+    else:
+        return await _handle_code_change(project_id, clean_query)
+
+
+def _handle_needs_clarification(classification: dict) -> dict:
+    new_session_id = str(uuid.uuid4())
+    _SESSION_STORE[new_session_id] = True
+    
+    questions = classification.get("clarification_questions", [
+        "Could you provide a bit more detail about what you want to achieve?",
+        "Are there specific files or modules you want to modify?"
+    ])
+    
+    return {
+        "type": "clarification",
+        "session_id": new_session_id,
+        "questions": [{"id": f"q_{i}", "question": q} for i, q in enumerate(questions)]
+    }
+
+async def _handle_clarification_synthesis(project_id: str, current_query: str, session_id: str, conversation_history: list[dict]) -> dict:
+    if session_id not in _SESSION_STORE:
+        # Just in case session is lost, default to standard prediction
+        return await _handle_code_change(project_id, current_query)
+        
+    # Format history
+    history_text = "\n".join([f"Q: {msg.get('question')}\nA: {msg.get('answer')}" for msg in conversation_history])
+    
+    chunks = await hybrid_retrieve(project_id, current_query, top_k=20)
+    context = build_context(chunks)
+    
+    try:
+        result = await llm_complete_json_with_keys(
+            CLARIFICATION_SYNTHESIS_PROMPT.format(
+                original_query=current_query,
+                conversation_history=history_text,
+                context=context
+            ),
+            required_keys=["answer"],
+            max_tokens=2000,
+        )
+        result["type"] = "architecture_question" # Render it like an architecture answer
+        
+        # Cleanup session
+        del _SESSION_STORE[session_id]
+        
+        return result
+    except Exception as e:
+        logger.error("clarification_synthesis_failed", error=str(e))
+        return {"error": "Failed to synthesize answer", "details": str(e)}
+
+async def _handle_tech_integration(project_id: str, query: str) -> dict:
+    chunks = await hybrid_retrieve(project_id, query, top_k=20)
+    context = build_context(chunks)
+    
+    try:
+        result = await llm_complete_json_with_keys(
+            TECH_INTEGRATION_PROMPT.format(
+                feature_description=query,
+                context=context
+            ),
+            required_keys=[
+                "technology",
+                "summary",
+                "integration_steps",
+                "files_to_modify",
+                "files_to_create",
+                "dependencies_to_add",
+                "estimated_complexity"
+            ],
+            max_tokens=2500,
+            retries=2
+        )
+        result["type"] = "tech_integration"
+        return result
+    except Exception as e:
+        logger.error("tech_integration_failed", error=str(e))
+        return {"error": "Failed to analyze technology integration", "details": str(e)}
+
+async def _handle_architecture_question(project_id: str, query: str) -> dict:
+    chunks = await hybrid_retrieve(project_id, query, top_k=20)
+    context = build_context(chunks)
+    
+    try:
+        result = await llm_complete_json_with_keys(
+            ARCHITECTURE_QUESTION_PROMPT.format(
+                query=query,
+                context=context
+            ),
+            required_keys=["answer", "relevant_files"],
+            max_tokens=2000,
+            retries=2
+        )
+        result["type"] = "architecture_question"
+        return result
+    except Exception as e:
+        logger.error("architecture_question_failed", error=str(e))
+        return {"error": "Failed to answer architecture question", "details": str(e)}
+
+async def _handle_code_change(project_id: str, feature_description: str) -> dict:
     chunks = await hybrid_retrieve(project_id, feature_description, top_k=20)
     seed_files = list({c["file_path"] for c in chunks if c.get("file_path")})
     impacted = (await bfs_impact(project_id, seed_files, max_depth=3))[:50]
@@ -54,6 +180,7 @@ async def predict_impact(project_id: str, feature_description: str) -> dict:
             max_tokens=2000,
             retries=2,
         )
+        result["type"] = "code_change"
         return result
     except Exception as e:
         logger.error(

@@ -6,6 +6,8 @@ from pydantic import BaseModel
 class ImpactRequest(BaseModel):
     project_id: str
     feature_description: str
+    session_id: str | None = None
+    conversation_history: list[dict] | None = None
 
 
 class PropagationRequest(BaseModel):

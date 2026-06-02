@@ -61,8 +61,8 @@ export const ingestAPI = {
 };
 
 export const analysisAPI = {
-  impact: (project_id: string, feature_description: string) =>
-    api.post("/analysis/impact", { project_id, feature_description }),
+  impact: (project_id: string, feature_description: string, session_id?: string, conversation_history?: any[]) =>
+    api.post("/analysis/impact", { project_id, feature_description, session_id, conversation_history }),
   propagation: (project_id: string, file_path: string, change_type = "modify") =>
     api.post("/analysis/propagation", { project_id, file_path, change_type }),
   architecture: (project_id: string) =>

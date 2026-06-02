@@ -77,30 +77,19 @@ def test_graph_rag_query_monkeypatched(monkeypatch):
     assert res.get("answer") or res.get("answer") == None
 
 
-def test_predict_impact_monkeypatched(monkeypatch):
+def test_analyze_impact_monkeypatched(monkeypatch):
     async def fake_hybrid(project_id, query, top_k=20):
         return [{"file_path": "a.py", "score": 0.9, "code": "def a(): pass"}]
 
-    async def fake_llm(*args, **kwargs):
-        return {"files_to_modify": [{"path": "a.py", "reason": "related"}]}
-    
-    async def fake_intent(*args, **kwargs):
-        return {"confidence": 0.9, "primary_domain": "backend", "entities_affected": [], "action_types": [], "keywords": []}
-
-    monkeypatch.setattr("app.services.rag.retriever.hybrid_retrieve", fake_hybrid)
-    monkeypatch.setattr("app.services.llm.client.llm_complete_json_with_keys", fake_llm)
-    # the intent uses llm_complete_json_with_keys too, so we need to branch in fake_llm or patch it differently
-    
-    # Actually, let's just make fake_llm generic enough:
     async def fake_llm_smart(prompt, required_keys, **kwargs):
-        if "confidence" in required_keys:
-            return {"confidence": 0.9, "primary_domain": "backend", "entities_affected": [], "action_types": [], "keywords": []}
+        if "type" in required_keys:
+            return {"type": "code_change", "confidence": 0.9}
         return {"files_to_modify": [{"path": "a.py", "reason": "related"}], "files_to_create": [], "downstream_risks": [], "dependencies_to_add": [], "estimated_complexity": "low"}
     
     monkeypatch.setattr("app.services.llm.client.llm_complete_json_with_keys", fake_llm_smart)
-    from app.services.intelligence.impact_predictor import predict_impact
+    from app.services.intelligence.impact_predictor import analyze_impact
 
-    res = asyncio.run(predict_impact("proj-1", "add feature"))
+    res = asyncio.run(analyze_impact("proj-1", "add feature"))
     assert isinstance(res, dict)
     assert "files_to_modify" in res
 

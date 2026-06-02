@@ -4,8 +4,16 @@ import re
 
 
 def sanitize_user_text(text: str, max_length: int = 2000) -> str:
-    text = html.escape((text or "").strip())
+    text = (text or "").strip()
+    # Remove null bytes and non-printable chars but preserve newlines
+    text = "".join(char for char in text if char.isprintable() or char in ("\n", "\r", "\t"))
     return text[:max_length]
+
+
+def clean_for_prompt(text: str) -> str:
+    # Normalize whitespace for prompts
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
 
 
 def extract_json(text: str) -> dict | list | None:
