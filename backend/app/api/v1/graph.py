@@ -6,6 +6,7 @@ from app.services.graph.graph_queries import (
     get_graph_nodes,
     get_graph_stats,
     get_subgraph,
+    get_circular_deps,
 )
 
 router = APIRouter()
@@ -35,3 +36,8 @@ async def subgraph(
 @router.get("/{project_id}/stats")
 async def stats(project_id: str, cu=Depends(get_current_user)):
     return await get_graph_stats(project_id)
+
+
+@router.get("/{project_id}/cycles")
+async def cycles(project_id: str, cu=Depends(get_current_user)):
+    return await get_circular_deps(project_id)

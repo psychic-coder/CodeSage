@@ -84,6 +84,8 @@ export const graphAPI = {
     api.get(`/graph/${project_id}/subgraph`, { params: { file_path, hops } }),
   stats: (project_id: string) =>
     api.get(`/graph/${project_id}/stats`),
+  cycles: (project_id: string) =>
+    api.get(`/graph/${project_id}/cycles`),
 };
 
 export const queryAPI = {

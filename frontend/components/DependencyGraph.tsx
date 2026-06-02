@@ -6,9 +6,7 @@ import ReactFlow, {
   Controls,
   Background,
   BackgroundVariant,
-  useNodesState,
-  useEdgesState,
-  addEdge,
+  useReactFlow,
   type Connection,
   type Node,
   type Edge,
@@ -168,14 +166,6 @@ export default function DependencyGraph({
     [rawNodes, rawEdges]
   );
 
-  const [nodes, , onNodesChange] = useNodesState(flowNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(flowEdges);
-
-  const onConnect = useCallback(
-    (params: Connection) => setEdges((eds) => addEdge(params, eds)),
-    [setEdges]
-  );
-
   const handleNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
       onNodeClick?.(node.data as GraphNode);
@@ -222,12 +212,9 @@ export default function DependencyGraph({
       style={{ minHeight: 480, background: "var(--color-bg)" }}
     >
       <ReactFlow
-        nodes={nodes}
-        edges={edges}
+        nodes={flowNodes}
+        edges={flowEdges}
         nodeTypes={nodeTypes}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
         onNodeClick={handleNodeClick}
         fitView
         fitViewOptions={{ padding: 0.15 }}
