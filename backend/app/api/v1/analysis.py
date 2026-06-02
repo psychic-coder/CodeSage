@@ -49,11 +49,22 @@ async def _cached(db, project_id, query_type, query_text, fn):
 async def impact(
     req: ImpactRequest, cu=Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ):
-    from app.services.intelligence.impact_predictor import predict_impact
+    from app.services.intelligence.impact_predictor import analyze_impact
 
     desc = sanitize_user_text(req.feature_description)
+    
+    # If it's a conversation session, do not cache
+    if req.session_id:
+        data = await analyze_impact(
+            req.project_id, 
+            desc, 
+            session_id=req.session_id, 
+            conversation_history=req.conversation_history
+        )
+        return AnalysisResponse(data=data, cached=False)
+        
     data, cached = await _cached(
-        db, req.project_id, "impact", desc, lambda: predict_impact(req.project_id, desc)
+        db, req.project_id, "impact", desc, lambda: analyze_impact(req.project_id, desc)
     )
     return AnalysisResponse(data=data, cached=cached)
 

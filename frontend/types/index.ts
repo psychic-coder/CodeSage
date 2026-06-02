@@ -58,6 +58,7 @@ export interface ImpactFile {
 }
 
 export interface ImpactResult {
+  type?: "code_change";
   files_to_modify: ImpactFile[];
   files_to_create: ImpactFile[];
   downstream_risks: { file: string; risk: string; risk_level: string }[];
@@ -65,6 +66,32 @@ export interface ImpactResult {
   estimated_complexity: "low" | "medium" | "high" | "very_high";
   implementation_order: string[];
 }
+
+export interface ClarificationResponse {
+  type: "clarification";
+  session_id: string;
+  questions: { id: string; question: string; options?: string[] }[];
+}
+
+export interface TechIntegrationResult {
+  type: "tech_integration";
+  technology: string;
+  summary: string;
+  integration_steps: { step: number; title: string; description: string; files?: string[] }[];
+  files_to_modify: ImpactFile[];
+  files_to_create: ImpactFile[];
+  dependencies_to_add: string[];
+  estimated_complexity: string;
+  external_docs_hint?: string;
+}
+
+export interface ArchitectureAnswer {
+  type: "architecture_question";
+  answer: string;
+  relevant_files: string[];
+  execution_flow?: { step: number; description: string; file?: string }[];
+}
+
 
 export interface ArchitectureIssue {
   type: string;

@@ -114,4 +114,5 @@ if "app.services.llm.output_parser" not in sys.modules:
     _op.extract_json = lambda text: {}
     _op.validate_required_keys = lambda d, keys: True
     _op.sanitize_user_text = lambda t: t
+    _op.clean_for_prompt = lambda t: t
     sys.modules["app.services.llm.output_parser"] = _op
