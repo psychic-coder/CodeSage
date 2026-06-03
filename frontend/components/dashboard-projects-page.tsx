@@ -146,6 +146,9 @@ export function DashboardProjectsPage() {
   const [githubUrl, setGithubUrl] = useState("");
   const [githubToken, setGithubToken] = useState("");
   const [showToken, setShowToken] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+
+  const showCreateForm = projects.length === 0 || isCreating;
 
   async function createProjectRecord(sourceType: Tab) {
     const response = await projectsAPI.create({
@@ -213,9 +216,11 @@ export function DashboardProjectsPage() {
             <h1 className="mt-2 text-3xl font-semibold text-white md:text-4xl">Project Selection</h1>
             <p className="mt-3 max-w-2xl text-sm text-white/55">{headline}</p>
           </div>
-          <button onClick={() => document.getElementById("new-project-card")?.scrollIntoView({ behavior: "smooth", block: "center" })} className="inline-flex items-center gap-2 rounded-full border border-cyan-400/30 bg-cyan-400/10 px-4 py-2.5 text-sm font-medium text-cyan-100 transition hover:bg-cyan-400/20">
-            <Plus className="h-4 w-4" /> New Project
-          </button>
+          {!showCreateForm && (
+            <button onClick={() => setIsCreating(true)} className="inline-flex items-center gap-2 rounded-full border border-cyan-400/30 bg-cyan-400/10 px-4 py-2.5 text-sm font-medium text-cyan-100 transition hover:bg-cyan-400/20">
+              <Plus className="h-4 w-4" /> New Project
+            </button>
+          )}
         </div>
 
         {isLoading ? (
@@ -224,9 +229,38 @@ export function DashboardProjectsPage() {
               <div key={index} className="h-[238px] rounded-[28px] border border-white/10 bg-white/[0.04]" />
             ))}
           </div>
-        ) : projects.length === 0 ? (
-          <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-            <div id="new-project-card" className="rounded-[32px] border border-dashed border-cyan-400/30 bg-white/[0.04] p-8 shadow-[0_16px_80px_rgba(34,211,238,0.12)]">
+        ) : (
+          <div className="space-y-12">
+            {projects.length > 0 && (
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {projects.map((project, index) => (
+                  <ProjectCard key={project.id} project={project} index={index} onDelete={deleteProject} />
+                ))}
+
+                {!showCreateForm && (
+                  <button onClick={() => {
+                    setIsCreating(true);
+                    setTimeout(() => document.getElementById("new-project-card")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+                  }} className="group rounded-[28px] border border-dashed border-white/12 bg-white/[0.03] p-5 text-left transition hover:border-cyan-400/30 hover:bg-cyan-400/5">
+                    <div className="flex h-full min-h-[238px] flex-col justify-between rounded-[24px] border border-white/5 bg-[linear-gradient(135deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))] p-5 transition group-hover:border-cyan-400/20">
+                      <div>
+                        <div className="text-sm uppercase tracking-[0.28em] text-white/35">New Project</div>
+                        <h3 className="mt-3 text-2xl font-semibold text-white">Drop a repository here</h3>
+                        <p className="mt-3 text-sm text-white/55">Paste a GitHub URL, drag a ZIP, or create a project record and attach a source later.</p>
+                      </div>
+                      <div className="flex items-center justify-between rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-3 text-xs text-white/45">
+                        <span>Glass dropzone</span>
+                        <Plus className="h-4 w-4 text-cyan-200" />
+                      </div>
+                    </div>
+                  </button>
+                )}
+              </div>
+            )}
+
+            {showCreateForm && (
+              <div id="new-project-card" className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr] scroll-mt-8">
+                <div className="rounded-[32px] border border-dashed border-cyan-400/30 bg-white/[0.04] p-8 shadow-[0_16px_80px_rgba(34,211,238,0.12)]">
               <div className="flex items-center gap-3 text-cyan-100">
                 <Upload className="h-5 w-5" />
                 <span className="text-sm uppercase tracking-[0.24em]">New Project</span>
@@ -259,8 +293,15 @@ export function DashboardProjectsPage() {
                 <p className="mt-3 text-sm text-white/75">{isDragActive ? "Release to upload the ZIP" : "Drag and drop a ZIP, or click this area to browse"}</p>
                 <p className="mt-1 text-xs text-white/40">The border spins with a subtle gradient as you hover the card.</p>
               </div>
-              <button onClick={async () => { if (!projectName.trim()) return; await createProjectRecord(createTab); }} disabled={!projectName.trim() || loading} className="mt-5 inline-flex items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-medium text-black transition hover:bg-cyan-100 disabled:opacity-40">
-                {loading ? "Creating..." : "Create project"}
+              <button onClick={async () => { 
+                if (!projectName.trim()) return; 
+                if (githubUrl.trim()) {
+                  await handleGithubImport(githubUrl.trim(), githubToken.trim());
+                } else {
+                  await createProjectRecord("github");
+                }
+              }} disabled={!projectName.trim() || loading} className="mt-5 inline-flex items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-medium text-black transition hover:bg-cyan-100 disabled:opacity-40">
+                {loading ? "Processing..." : (githubUrl.trim() ? "Create & Import" : "Create Empty Project")}
               </button>
             </div>
 
@@ -269,38 +310,18 @@ export function DashboardProjectsPage() {
               <div className="mt-4 space-y-4">
                 <input value={projectName} onChange={(event) => setProjectName(event.target.value)} placeholder="Acme Platform" className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none placeholder:text-white/30" />
                 <textarea value={projectDescription} onChange={(event) => setProjectDescription(event.target.value)} rows={4} placeholder="Next.js frontends, Python workers, Postgres, Neo4j, and realtime tooling." className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none placeholder:text-white/30" />
-                <div className="flex gap-2">
-                  {(["github", "zip"] as Tab[]).map((tab) => (
-                    <button key={tab} type="button" onClick={() => setCreateTab(tab)} className={cn("rounded-full border px-4 py-2 text-xs uppercase tracking-[0.24em] transition", createTab === tab ? "border-cyan-400/30 bg-cyan-400/10 text-cyan-100" : "border-white/10 bg-black/20 text-white/45")}>
-                      {tab}
+                <div className="flex items-center justify-between gap-4 mt-4">
+                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-xs text-white/45 flex-1">Use the create flow to seed the backend project record, then ingest from GitHub or ZIP.</div>
+                  {projects.length > 0 && (
+                    <button type="button" onClick={() => setIsCreating(false)} className="rounded-full border border-white/10 bg-black/20 px-6 py-3 text-xs uppercase tracking-[0.24em] text-white/45 transition hover:bg-white/5 hover:text-white shrink-0">
+                      Cancel
                     </button>
-                  ))}
+                  )}
                 </div>
-                {createTab === "github" && <GitHubUrlInput onSubmit={handleGithubImport} loading={loading} />}
-                {createTab === "zip" && <UploadZone onUpload={handleZipImport} loading={loading} />}
-                <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-xs text-white/45">Use the create flow to seed the backend project record, then ingest from GitHub or ZIP. The backend job stream stays connected through WebSocket progress.</div>
               </div>
             </div>
-          </div>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {projects.map((project, index) => (
-              <ProjectCard key={project.id} project={project} index={index} onDelete={deleteProject} />
-            ))}
-
-            <button onClick={() => document.getElementById("new-project-card")?.scrollIntoView({ behavior: "smooth", block: "start" })} className="group rounded-[28px] border border-dashed border-white/12 bg-white/[0.03] p-5 text-left transition hover:border-cyan-400/30 hover:bg-cyan-400/5">
-              <div className="flex h-full min-h-[238px] flex-col justify-between rounded-[24px] border border-white/5 bg-[linear-gradient(135deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))] p-5 transition group-hover:border-cyan-400/20">
-                <div>
-                  <div className="text-sm uppercase tracking-[0.28em] text-white/35">New Project</div>
-                  <h3 className="mt-3 text-2xl font-semibold text-white">Drop a repository here</h3>
-                  <p className="mt-3 text-sm text-white/55">Paste a GitHub URL, drag a ZIP, or create a project record and attach a source later.</p>
-                </div>
-                <div className="flex items-center justify-between rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-3 text-xs text-white/45">
-                  <span>Glass dropzone</span>
-                  <Plus className="h-4 w-4 text-cyan-200" />
-                </div>
-              </div>
-            </button>
+            </div>
+            )}
           </div>
         )}
 
