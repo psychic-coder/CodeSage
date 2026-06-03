@@ -2,10 +2,11 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
-import { Clock3, FilePlus2, FileText, Shield, Sparkles, Zap } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Clock3, FilePlus2, FileText, Shield, Sparkles, Zap, RefreshCw } from "lucide-react";
 import { analysisAPI } from "@/lib/api";
 import { improvementFallback, normalizeList, recommendationFallback, unwrapAnalysis } from "@/lib/dashboard-ui";
+import { GraphLink } from "./shared/GraphLink";
 
 const categories = [
   { key: "security", label: "Security", icon: Shield, color: "#F43F5E" },
@@ -29,21 +30,46 @@ function ComplexityBadge({ value }: { value: string }) {
 }
 
 export function ImprovementsPage({ projectId }: { projectId: string }) {
+  const qc = useQueryClient();
   const [category, setCategory] = useState("");
+  const [sortBy, setSortBy] = useState<"severity" | "effort">("severity");
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const improvementsQuery = useQuery({ queryKey: ["improvements", projectId, category], queryFn: () => analysisAPI.improvements(projectId, category || undefined) });
   const recommendationsQuery = useQuery({ queryKey: ["recommendations", projectId], queryFn: () => analysisAPI.recommendations(projectId) });
 
-  const improvements = normalizeList<any>(unwrapAnalysis<any>(improvementsQuery.data)?.improvements || unwrapAnalysis<any>(improvementsQuery.data), improvementFallback.improvements);
+  const rawImprovements = normalizeList<any>(unwrapAnalysis<any>(improvementsQuery.data)?.improvements || unwrapAnalysis<any>(improvementsQuery.data), improvementFallback.improvements);
   const recommendations = normalizeList<any>(unwrapAnalysis<any>(recommendationsQuery.data)?.recommendations || unwrapAnalysis<any>(recommendationsQuery.data), recommendationFallback);
 
   const stats = useMemo(() => {
-    const security = improvements.filter((item) => item.category === "security").length || improvementFallback.stats.security;
-    const performance = improvements.filter((item) => item.category === "performance").length || improvementFallback.stats.performance;
-    const refactoring = improvements.filter((item) => item.category === "refactoring").length || improvementFallback.stats.refactoring;
-    const critical = improvements.filter((item) => item.severity === "critical").length || improvementFallback.stats.critical;
+    const security = rawImprovements.filter((item) => item.category === "security").length || improvementFallback.stats.security;
+    const performance = rawImprovements.filter((item) => item.category === "performance").length || improvementFallback.stats.performance;
+    const refactoring = rawImprovements.filter((item) => item.category === "refactoring").length || improvementFallback.stats.refactoring;
+    const critical = rawImprovements.filter((item) => item.severity === "critical").length || improvementFallback.stats.critical;
     return { security, performance, refactoring, critical };
-  }, [improvements]);
+  }, [rawImprovements]);
+
+  const improvements = useMemo(() => {
+    const severityOrder = { critical: 1, high: 2, medium: 3, low: 4 };
+    const effortOrder = { low: 1, medium: 2, high: 3 };
+    return [...rawImprovements].sort((a, b) => {
+      if (sortBy === "severity") {
+        return (severityOrder[a.severity as keyof typeof severityOrder] || 99) - (severityOrder[b.severity as keyof typeof severityOrder] || 99);
+      } else {
+        return (effortOrder[a.effort as keyof typeof effortOrder] || 99) - (effortOrder[b.effort as keyof typeof effortOrder] || 99);
+      }
+    });
+  }, [rawImprovements, sortBy]);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await qc.invalidateQueries({ queryKey: ["improvements", projectId] });
+      await qc.invalidateQueries({ queryKey: ["recommendations", projectId] });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   return (
     <div className="px-5 py-6 lg:px-8">
@@ -66,7 +92,7 @@ export function ImprovementsPage({ projectId }: { projectId: string }) {
           })}
         </section>
 
-        <section className="rounded-[32px] border border-white/10 bg-white/[0.04] p-5 lg:p-6">
+        <section className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 rounded-[32px] border border-white/10 bg-white/[0.04] p-5 lg:p-6">
           <div className="flex flex-wrap items-center gap-2">
             <span className="mr-2 text-xs uppercase tracking-[0.24em] text-white/35">Filter</span>
             {categories.map((item) => {
@@ -88,6 +114,18 @@ export function ImprovementsPage({ projectId }: { projectId: string }) {
                 </button>
               );
             })}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-2 rounded-full border border-white/10 bg-black/20 p-1">
+              <button onClick={() => setSortBy("severity")} className={`rounded-full px-4 py-1.5 text-xs uppercase tracking-[0.2em] transition ${sortBy === "severity" ? "bg-white/10 text-white" : "text-white/45 hover:text-white/70"}`}>Severity</button>
+              <button onClick={() => setSortBy("effort")} className={`rounded-full px-4 py-1.5 text-xs uppercase tracking-[0.2em] transition ${sortBy === "effort" ? "bg-white/10 text-white" : "text-white/45 hover:text-white/70"}`}>Effort</button>
+            </div>
+            
+            <button onClick={handleRefresh} disabled={isRefreshing} className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm text-white/70 transition hover:bg-white/[0.08] disabled:opacity-50">
+              <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin text-cyan-400" : ""}`} />
+              Refresh
+            </button>
           </div>
         </section>
 
@@ -117,13 +155,13 @@ export function ImprovementsPage({ projectId }: { projectId: string }) {
                     </div>
 
                     <div className="mt-5 grid gap-4 xl:grid-cols-[0.88fr_1.12fr]">
-                      <button type="button" className="inline-flex items-center justify-between rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-left text-sm text-white/70 transition hover:border-cyan-400/25 hover:bg-white/[0.03]" onClick={() => navigator.clipboard.writeText(item.file || "") }>
+                      <Link href={`/dashboard/${projectId}/graph?focus=${encodeURIComponent(item.file || "")}`} className="inline-flex items-center justify-between rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-left text-sm text-white/70 transition hover:border-cyan-400/25 hover:bg-white/[0.03]">
                         <span className="flex items-center gap-3 truncate">
                           <FileText className="h-4 w-4 text-cyan-200" />
                           <span className="truncate font-mono">{item.file}</span>
                         </span>
-                        <span className="text-[11px] uppercase tracking-[0.22em] text-white/35">copy</span>
-                      </button>
+                        <span className="text-[11px] uppercase tracking-[0.22em] text-cyan-200/50">view graph</span>
+                      </Link>
 
                       {item.code_snippet ? (
                         <pre className="overflow-auto rounded-2xl border border-white/10 bg-[#0d0f14] p-4 text-xs leading-6 text-cyan-100"><code>{item.code_snippet}</code></pre>
@@ -168,7 +206,7 @@ export function ImprovementsPage({ projectId }: { projectId: string }) {
                       <div className="mb-2 text-[11px] uppercase tracking-[0.24em] text-white/35">Files to modify (~)</div>
                       <div className="flex flex-wrap gap-2">
                         {(item.files_to_modify || []).map((file: string) => (
-                          <span key={file} className="rounded-full border border-cyan-400/25 bg-cyan-500/10 px-2.5 py-1 text-[11px] text-cyan-100 font-mono">~ {file}</span>
+                          <GraphLink key={file} projectId={projectId} file={file} className="!border-cyan-400/25 !bg-cyan-500/10 !text-cyan-100 hover:!bg-cyan-500/20" />
                         ))}
                       </div>
                     </div>

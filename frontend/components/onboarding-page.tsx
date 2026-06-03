@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Check, Copy, History, Loader2, Sparkles, Wand2 } from "lucide-react";
+import { Check, Copy, History, Loader2, Sparkles, Wand2, BookOpen, Package } from "lucide-react";
 import { analysisAPI } from "@/lib/api";
 import { onboardingFallback, presetQuestions, unwrapAnalysis } from "@/lib/dashboard-ui";
+import { GraphLink } from "./shared/GraphLink";
 
 const HISTORY_KEY = "codesage_onboarding_history";
 
@@ -145,7 +146,7 @@ export function OnboardingPage({ projectId }: { projectId: string }) {
                         <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
                           <div className="flex flex-wrap items-center gap-3">
                             <code className="text-sm text-cyan-100">{step.function}</code>
-                            <span className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-[11px] uppercase tracking-[0.2em] text-white/45">{step.file}</span>
+                            <GraphLink projectId={projectId} file={step.file} />
                           </div>
                           <p className="mt-3 text-sm leading-6 text-white/60">{step.description}</p>
                         </div>
@@ -166,10 +167,39 @@ export function OnboardingPage({ projectId }: { projectId: string }) {
                     <div className="text-xs uppercase tracking-[0.24em] text-white/35">Key files</div>
                     <div className="mt-3 space-y-2">
                       {(result.key_files || onboardingFallback.key_files).map((item: string) => (
-                        <div key={item} className="rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-mono text-cyan-100">{item}</div>
+                        <GraphLink key={item} projectId={projectId} file={item} />
                       ))}
                     </div>
                   </div>
+
+                  {result.suggested_reading_order?.length > 0 && (
+                    <div className="rounded-[30px] border border-white/10 bg-black/20 p-5">
+                      <div className="flex items-center gap-2 text-xs uppercase tracking-[0.24em] text-cyan-200">
+                        <BookOpen className="h-3.5 w-3.5" /> Reading order
+                      </div>
+                      <div className="mt-3 space-y-2">
+                        {result.suggested_reading_order.map((item: string, index: number) => (
+                          <div key={item} className="flex items-center gap-3">
+                            <div className="flex h-5 w-5 items-center justify-center rounded-full bg-white/10 text-[10px] text-white/60">{index + 1}</div>
+                            <GraphLink projectId={projectId} file={item} />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {result.external_dependencies?.length > 0 && (
+                    <div className="rounded-[30px] border border-white/10 bg-black/20 p-5">
+                      <div className="flex items-center gap-2 text-xs uppercase tracking-[0.24em] text-violet-200">
+                        <Package className="h-3.5 w-3.5" /> External deps
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {result.external_dependencies.map((dep: string) => (
+                          <span key={dep} className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] text-white/60">{dep}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </section>

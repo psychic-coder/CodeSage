@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, ArrowRight, ChevronDown, Code2, Layers3, Link2, ShieldAlert } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { AlertTriangle, ArrowRight, ChevronDown, Code2, Layers3, Link2, ShieldAlert, RefreshCw } from "lucide-react";
 import { analysisAPI } from "@/lib/api";
 import { architectureFallback, normalizeList, unwrapAnalysis } from "@/lib/dashboard-ui";
+import { GraphLink } from "./shared/GraphLink";
 
 type TabKey = "issues" | "god-files" | "cycles" | "coupling" | "external";
 
@@ -58,9 +59,21 @@ export function ArchitecturePage({ projectId }: { projectId: string }) {
   const issues = normalizeList(result?.issues, architectureFallback.issues);
   const strengths = normalizeList(result?.strengths, architectureFallback.strengths);
 
+  const qc = useQueryClient();
   const [activeTab, setActiveTab] = useState<TabKey>("issues");
   const [openIssue, setOpenIssue] = useState<number | null>(0);
   const [animatedScore, setAnimatedScore] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await analysisAPI.architectureRefresh(projectId);
+      await qc.invalidateQueries({ queryKey: ["architecture", projectId] });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const score = Math.round(Number(result?.overall_health_score ?? architectureFallback.overall_health_score));
 
@@ -118,6 +131,17 @@ export function ArchitecturePage({ projectId }: { projectId: string }) {
               </div>
             </div>
           </div>
+          
+          <div className="mt-6 flex justify-end">
+            <button 
+              onClick={handleRefresh} 
+              disabled={isRefreshing}
+              className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-white/70 transition hover:bg-white/[0.08] disabled:opacity-50"
+            >
+              <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin text-cyan-400" : ""}`} />
+              {isRefreshing ? "Analyzing..." : "Re-analyze"}
+            </button>
+          </div>
         </section>
 
         <section className="rounded-[32px] border border-white/10 bg-white/[0.04] p-4 lg:p-6">
@@ -171,8 +195,13 @@ export function ArchitecturePage({ projectId }: { projectId: string }) {
                               <div className="text-xs uppercase tracking-[0.24em] text-white/35">Description</div>
                               <p className="text-sm text-white/60">{issue.description}</p>
                               <div className="rounded-2xl border border-white/10 bg-[#0d0f14] p-4">
-                                <div className="mb-2 flex items-center gap-2 text-xs uppercase tracking-[0.24em] text-cyan-200"><Code2 className="h-3.5 w-3.5" /> Affected code</div>
-                                <pre className="overflow-auto text-xs leading-6 text-cyan-100"><code>{(issue.involved_files || []).join("\n") || "No code excerpt returned."}</code></pre>
+                                <div className="mb-2 flex items-center gap-2 text-xs uppercase tracking-[0.24em] text-cyan-200"><Code2 className="h-3.5 w-3.5" /> Affected files</div>
+                                <div className="flex flex-wrap gap-2">
+                                  {(issue.involved_files || []).map((file: string) => (
+                                    <GraphLink key={file} projectId={projectId} file={file} />
+                                  ))}
+                                  {(!issue.involved_files || issue.involved_files.length === 0) && <span className="text-white/45 text-xs">No specific files identified.</span>}
+                                </div>
                               </div>
                             </div>
                             <div className="rounded-2xl border border-rose-400/25 bg-rose-500/10 p-4">
@@ -197,7 +226,7 @@ export function ArchitecturePage({ projectId }: { projectId: string }) {
                   return (
                     <div key={file.path} className="rounded-[24px] border border-white/10 bg-black/20 p-4">
                       <div className="flex items-center justify-between gap-4">
-                        <code className="truncate text-sm text-cyan-100">{file.path}</code>
+                        <GraphLink projectId={projectId} file={file.path} />
                         <div className="text-xs text-white/45">in {file.in_degree} / out {file.out_degree}</div>
                       </div>
                       <div className="mt-4 overflow-hidden rounded-full bg-white/5">
@@ -222,7 +251,7 @@ export function ArchitecturePage({ projectId }: { projectId: string }) {
                 <div className="flex flex-wrap items-center gap-3">
                   {cycle.map((node, index) => (
                     <div key={`${node}-${index}`} className="flex items-center gap-3">
-                      <span className="rounded-full border border-amber-300/30 bg-amber-500/10 px-4 py-2 text-sm text-amber-50">{node}</span>
+                      <GraphLink projectId={projectId} file={node} className="!border-amber-300/30 !bg-amber-500/10 !text-amber-50 hover:!bg-amber-500/20" />
                       {index < cycle.length - 1 && <ArrowRight className="h-4 w-4 text-amber-200/70" />}
                     </div>
                   ))}
@@ -237,8 +266,11 @@ export function ArchitecturePage({ projectId }: { projectId: string }) {
                     <div className="flex items-start gap-3 text-sm text-white/70">
                       <Link2 className="mt-0.5 h-4 w-4 text-cyan-200" />
                       <div>
-                        <div className="font-medium text-white">{item.file_a}</div>
-                        <div className="mt-1 text-white/45">↔ {item.file_b}</div>
+                        <GraphLink projectId={projectId} file={item.file_a} />
+                        <div className="mt-2 flex items-center gap-2 text-white/45">
+                          <span>↔</span>
+                          <GraphLink projectId={projectId} file={item.file_b} />
+                        </div>
                       </div>
                     </div>
                   </div>
