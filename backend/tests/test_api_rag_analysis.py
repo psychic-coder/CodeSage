@@ -74,7 +74,7 @@ def test_graph_rag_query_monkeypatched(monkeypatch):
 
     res = asyncio.run(graph_rag.graph_rag_query("proj-1", "what?"))
     assert isinstance(res, dict)
-    assert res.get("answer") or res.get("answer") == None
+    assert res.get("answer") or res.get("answer") is None
 
 
 def test_analyze_impact_monkeypatched(monkeypatch):

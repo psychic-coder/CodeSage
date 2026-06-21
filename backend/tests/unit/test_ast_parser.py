@@ -2,7 +2,6 @@
 
 Conftest stubs external services so no live infrastructure is needed.
 """
-import pytest
 from app.services.parsing.ast_parser import _parse_js, _parse_py, _parse_html
 
 

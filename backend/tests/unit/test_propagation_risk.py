@@ -3,7 +3,6 @@
 Pure-function tests for _count_nodes and _weighted_risk.
 Conftest stubs all external services so no live infra is needed.
 """
-import pytest
 from app.services.graph.graph_queries import _count_nodes, _weighted_risk
 
 

@@ -12,20 +12,28 @@ export function JobProgress({ jobId, onComplete, onError }: Props) {
   const [progress, setProgress] = useState(0);
   const [step, setStep] = useState("Initializing...");
   const [status, setStatus] = useState<"running" | "done" | "failed">("running");
+  const [isReconnecting, setIsReconnecting] = useState(false);
 
   useEffect(() => {
-    const disconnect = connectJobWS(jobId, (data) => {
-      setProgress(data.progress ?? 0);
-      if (data.current_step) setStep(data.current_step);
-      if (data.status === "done" || data.progress === 100) {
-        setStatus("done");
-        onComplete?.();
+    const disconnect = connectJobWS(
+      jobId,
+      (data) => {
+        setIsReconnecting(false); // we got a message, so we're good
+        setProgress(data.progress ?? 0);
+        if (data.current_step) setStep(data.current_step);
+        if (data.status === "done" || data.progress === 100) {
+          setStatus("done");
+          onComplete?.();
+        }
+        if (data.status === "failed" || data.error) {
+          setStatus("failed");
+          onError?.(data.error || "Processing failed");
+        }
+      },
+      () => {
+        setIsReconnecting(true);
       }
-      if (data.status === "failed" || data.error) {
-        setStatus("failed");
-        onError?.(data.error || "Processing failed");
-      }
-    });
+    );
     return disconnect;
   }, [jobId, onComplete, onError]);
 
@@ -49,9 +57,14 @@ export function JobProgress({ jobId, onComplete, onError }: Props) {
           ✓ Processing complete
         </p>
       )}
-      {status === "failed" && (
+      {status === "failed" && !isReconnecting && (
         <p style={{ marginTop: "var(--space-2)", fontSize: "var(--text-xs)", color: "var(--color-error)" }}>
           ✗ Processing failed
+        </p>
+      )}
+      {status !== "done" && isReconnecting && (
+        <p style={{ marginTop: "var(--space-2)", fontSize: "var(--text-xs)", color: "var(--color-warning)" }}>
+          <span className="animate-pulse" style={{ display: "inline-block", marginRight: "4px" }}>•</span> Reconnecting...
         </p>
       )}
     </div>
