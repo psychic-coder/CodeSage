@@ -16,9 +16,36 @@ from app.services.rag.retriever import hybrid_retrieve
 
 logger = structlog.get_logger()
 
-# In-memory store for sessions (reset on restart).
-# For production persistence, we would use Redis.
-_SESSION_STORE = {}
+# In-memory fallback store for sessions (used if Redis is unavailable)
+_FALLBACK_STORE: dict[str, bool] = {}
+_SESSION_TTL = 1800  # 30 minutes
+
+async def _session_create(session_id: str) -> None:
+    try:
+        from app.database.redis import get_redis
+        redis = get_redis()
+        await redis.setex(f"session:{session_id}", _SESSION_TTL, "1")
+    except Exception as e:
+        logger.warning("redis_session_create_failed_fallback_to_memory", error=str(e))
+        _FALLBACK_STORE[session_id] = True
+
+async def _session_exists(session_id: str) -> bool:
+    try:
+        from app.database.redis import get_redis
+        redis = get_redis()
+        return bool(await redis.exists(f"session:{session_id}"))
+    except Exception as e:
+        logger.warning("redis_session_exists_failed_fallback_to_memory", error=str(e))
+        return session_id in _FALLBACK_STORE
+
+async def _session_delete(session_id: str) -> None:
+    try:
+        from app.database.redis import get_redis
+        redis = get_redis()
+        await redis.delete(f"session:{session_id}")
+    except Exception as e:
+        logger.warning("redis_session_delete_failed_fallback_to_memory", error=str(e))
+        _FALLBACK_STORE.pop(session_id, None)
 
 async def analyze_impact(
     project_id: str, 
@@ -50,7 +77,7 @@ async def analyze_impact(
     logger.info("impact_classification", query_type=query_type, confidence=classification.get("confidence"))
 
     if query_type == "needs_clarification":
-        return _handle_needs_clarification(classification)
+        return await _handle_needs_clarification(classification)
     elif query_type == "tech_integration":
         return await _handle_tech_integration(project_id, clean_query)
     elif query_type in ("architecture_question", "process_question"):
@@ -59,9 +86,9 @@ async def analyze_impact(
         return await _handle_code_change(project_id, clean_query)
 
 
-def _handle_needs_clarification(classification: dict) -> dict:
+async def _handle_needs_clarification(classification: dict) -> dict:
     new_session_id = str(uuid.uuid4())
-    _SESSION_STORE[new_session_id] = True
+    await _session_create(new_session_id)
     
     questions = classification.get("clarification_questions", [
         "Could you provide a bit more detail about what you want to achieve?",
@@ -75,7 +102,7 @@ def _handle_needs_clarification(classification: dict) -> dict:
     }
 
 async def _handle_clarification_synthesis(project_id: str, current_query: str, session_id: str, conversation_history: list[dict]) -> dict:
-    if session_id not in _SESSION_STORE:
+    if not await _session_exists(session_id):
         # Just in case session is lost, default to standard prediction
         return await _handle_code_change(project_id, current_query)
         
@@ -98,7 +125,7 @@ async def _handle_clarification_synthesis(project_id: str, current_query: str, s
         result["type"] = "architecture_question" # Render it like an architecture answer
         
         # Cleanup session
-        del _SESSION_STORE[session_id]
+        await _session_delete(session_id)
         
         return result
     except Exception as e:

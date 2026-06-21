@@ -115,7 +115,8 @@ async def architecture_refresh(
             project_id=project_id,
             query_type="architecture",
             query_hash=qhash,
-            result=data,
+            query_text="architecture",
+            result_json=json.dumps(data),
         )
     )
     await db.commit()
