@@ -1,5 +1,6 @@
 import hashlib
 import json
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import select, delete
@@ -19,18 +20,24 @@ from app.services.llm.output_parser import sanitize_user_text
 router = APIRouter()
 
 
-async def _cached(db, project_id, query_type, query_text, fn):
+async def _cached(db, project_id, query_type, query_text, fn, ttl_hours=24):
     qhash = hashlib.sha256(f"{project_id}:{query_text}".encode()).hexdigest()
-    row = (
-        await db.execute(
-            select(AnalysisCache).where(
-                AnalysisCache.project_id == project_id,
-                AnalysisCache.query_hash == qhash,
-            )
-        )
-    ).scalar_one_or_none()
+    
+    # Only return cache if not expired
+    stmt = select(AnalysisCache).where(
+        AnalysisCache.project_id == project_id,
+        AnalysisCache.query_hash == qhash,
+    )
+    row = (await db.execute(stmt)).scalar_one_or_none()
+    
     if row:
-        return json.loads(row.result_json), True
+        if row.expires_at is None or row.expires_at > datetime.utcnow():
+            return json.loads(row.result_json), True
+        else:
+            # Delete expired row
+            await db.delete(row)
+            await db.commit()
+
     data = await fn()
     db.add(
         AnalysisCache(
@@ -39,6 +46,7 @@ async def _cached(db, project_id, query_type, query_text, fn):
             query_type=query_type,
             query_text=query_text,
             result_json=json.dumps(data),
+            expires_at=datetime.utcnow() + timedelta(hours=ttl_hours),
         )
     )
     await db.commit()
@@ -64,7 +72,7 @@ async def impact(
         return AnalysisResponse(data=data, cached=False)
         
     data, cached = await _cached(
-        db, req.project_id, "impact", desc, lambda: analyze_impact(req.project_id, desc)
+        db, req.project_id, "impact", desc, lambda: analyze_impact(req.project_id, desc), ttl_hours=12
     )
     return AnalysisResponse(data=data, cached=cached)
 
@@ -89,6 +97,7 @@ async def architecture(
         "architecture",
         "architecture",
         lambda: analyze_architecture(project_id),
+        ttl_hours=48
     )
     return AnalysisResponse(data=data, cached=cached)
 
@@ -140,6 +149,7 @@ async def improvements(
         "improvements",
         f"improvements:{categories}",
         lambda: suggest_improvements(project_id, cats),
+        ttl_hours=24
     )
     return AnalysisResponse(data=data, cached=cached)
 
@@ -156,6 +166,7 @@ async def recommendations(
         "recommendations",
         "recommendations",
         lambda: recommend_features(project_id),
+        ttl_hours=24
     )
     return AnalysisResponse(data=data, cached=cached)
 
@@ -175,5 +186,6 @@ async def onboarding(
         "onboarding",
         topic,
         lambda: generate_onboarding(req.project_id, topic),
+        ttl_hours=6
     )
     return AnalysisResponse(data=data, cached=cached)

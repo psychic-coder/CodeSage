@@ -184,6 +184,8 @@ function GraphPageContent() {
   const [filterLang, setFilterLang] = useState("");
   const [filterRisk, setFilterRisk] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [showSearchDropdown, setShowSearchDropdown] = useState(false);
+  const [searchFocusIdx, setSearchFocusIdx] = useState(-1);
   const [focusDepth, setFocusDepth] = useState(2);
   const [showIsolatedOnly, setShowIsolatedOnly] = useState(false);
   const [showCyclesOnly, setShowCyclesOnly] = useState(false);
@@ -276,6 +278,13 @@ function GraphPageContent() {
     () => new Set(filtered.map((n) => n.path)),
     [filtered],
   );
+
+  const searchResults = useMemo(() => {
+    if (!searchQuery) return [];
+    return rawNodes
+      .filter((n) => n.path.toLowerCase().includes(searchQuery.toLowerCase()))
+      .slice(0, 8);
+  }, [searchQuery, rawNodes]);
 
   const neighborhoodPaths = useMemo(() => {
     if (!selectedNode) return filteredPaths;
@@ -494,6 +503,26 @@ function GraphPageContent() {
     }
   };
 
+  const handleJumpToSearch = (nodeRaw: GraphNode) => {
+    setSearchQuery(nodeRaw.path);
+    setShowSearchDropdown(false);
+    
+    // We must wait for ReactFlow to render the filtered node if it was hidden
+    setTimeout(() => {
+      // Find the node in the current flow nodes or re-compute layout if needed
+      // Actually, since we updated searchQuery, it might be in the next render cycle.
+      // 100ms should be enough for the next render
+      const flowNode = flowNodes.find((n) => n.id === nodeRaw.path);
+      if (flowNode) {
+        setSelectedNode(nodeRaw);
+        setCenter(flowNode.position.x, flowNode.position.y, { zoom: 1.5, duration: 800 });
+      } else {
+         // fallback if it wasn't rendered yet
+         setSelectedNode(nodeRaw);
+      }
+    }, 150);
+  };
+
   const exportCSV = () => {
     const headers = [
       "path",
@@ -591,20 +620,85 @@ function GraphPageContent() {
             alignItems: "center",
           }}
         >
-          <input
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search files..."
-            style={{
-              padding: "var(--space-1) var(--space-3)",
-              borderRadius: "var(--radius-md)",
-              background: "var(--color-surface-2)",
-              border: "1px solid var(--color-border)",
-              color: "var(--color-text)",
-              fontSize: "var(--text-xs)",
-              outline: "none",
-            }}
-          />
+          <div style={{ position: "relative" }}>
+            <input
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setShowSearchDropdown(true);
+                setSearchFocusIdx(-1);
+              }}
+              onFocus={() => setShowSearchDropdown(true)}
+              onBlur={() => setTimeout(() => setShowSearchDropdown(false), 200)}
+              onKeyDown={(e) => {
+                if (!showSearchDropdown || searchResults.length === 0) return;
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  setSearchFocusIdx((prev) => (prev < searchResults.length - 1 ? prev + 1 : prev));
+                } else if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  setSearchFocusIdx((prev) => (prev > 0 ? prev - 1 : 0));
+                } else if (e.key === "Enter") {
+                  e.preventDefault();
+                  if (searchFocusIdx >= 0 && searchFocusIdx < searchResults.length) {
+                    handleJumpToSearch(searchResults[searchFocusIdx]);
+                  } else if (searchResults.length > 0) {
+                    handleJumpToSearch(searchResults[0]);
+                  }
+                } else if (e.key === "Escape") {
+                  setShowSearchDropdown(false);
+                }
+              }}
+              placeholder="Search files..."
+              style={{
+                padding: "var(--space-1) var(--space-3)",
+                borderRadius: "var(--radius-md)",
+                background: "var(--color-surface-2)",
+                border: "1px solid var(--color-border)",
+                color: "var(--color-text)",
+                fontSize: "var(--text-xs)",
+                outline: "none",
+                width: "200px",
+              }}
+            />
+            {showSearchDropdown && searchResults.length > 0 && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "100%",
+                  left: 0,
+                  width: "100%",
+                  background: "var(--color-surface)",
+                  border: "1px solid var(--color-border)",
+                  borderRadius: "var(--radius-md)",
+                  marginTop: "4px",
+                  zIndex: 50,
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
+                  maxHeight: "300px",
+                  overflowY: "auto",
+                }}
+              >
+                {searchResults.map((res, idx) => (
+                  <div
+                    key={res.path}
+                    onClick={() => handleJumpToSearch(res)}
+                    style={{
+                      padding: "var(--space-2) var(--space-3)",
+                      fontSize: "var(--text-xs)",
+                      cursor: "pointer",
+                      background: idx === searchFocusIdx ? "var(--color-surface-offset)" : "transparent",
+                      borderBottom: "1px solid var(--color-border)",
+                      wordBreak: "break-all",
+                    }}
+                    onMouseEnter={() => setSearchFocusIdx(idx)}
+                  >
+                    <div style={{ fontWeight: 600 }}>{res.name || res.path.split("/").pop()}</div>
+                    <div style={{ color: "var(--color-text-muted)", fontSize: "10px" }}>{res.path}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
           <select
             value={filterLang}
             onChange={(e) => setFilterLang(e.target.value)}

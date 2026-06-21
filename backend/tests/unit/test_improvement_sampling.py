@@ -3,7 +3,6 @@
 Conftest stubs all external services so no live infra is needed.
 """
 import asyncio
-import pytest
 
 from app.services.intelligence import improvement_suggester
 from app.services.intelligence.improvement_suggester import (
