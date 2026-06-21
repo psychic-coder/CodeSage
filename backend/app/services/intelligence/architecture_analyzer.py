@@ -81,6 +81,7 @@ async def analyze_architecture(project_id: str) -> dict:
             max_tokens=2000,
             retries=2,
         )
+        result["findings"] = findings
         return result
     except Exception as e:
         logger.error("llm_synthesis_failed", error=str(e), query_type="architecture")

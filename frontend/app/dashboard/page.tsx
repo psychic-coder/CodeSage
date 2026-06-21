@@ -1,13 +1,13 @@
 "use client";
 import { useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { projectsAPI, ingestAPI } from "@/lib/api";
+import { projectsAPI, ingestAPI, analysisAPI } from "@/lib/api";
 import { JobProgress } from "@/components/shared/JobProgress";
 import { GitHubUrlInput } from "@/components/upload/GitHubUrlInput";
 import { UploadZone } from "@/components/upload/UploadZone";
 import type { Project } from "@/types";
+import { useRouter } from "next/navigation";
 
 type Tab = "github" | "zip" | "local";
 
@@ -16,7 +16,7 @@ const LANG_COLORS: Record<string, string> = {
   java: "#b07219", go: "#00ADD8", rust: "#dea584",
 };
 
-function HealthRing({ score }: { score: number }) {
+function HealthRing({ score, label }: { score: number, label?: string }) {
   const r = 20, circ = 2 * Math.PI * r;
   const color = score >= 70 ? "var(--color-success)" : score >= 40 ? "var(--color-warning)" : "var(--color-error)";
   return (
@@ -27,9 +27,30 @@ function HealthRing({ score }: { score: number }) {
         strokeLinecap="round" transform="rotate(-90 28 28)"
         style={{ transition: "stroke-dashoffset 0.8s ease" }}
       />
-      <text x="28" y="33" textAnchor="middle" fill={color} fontSize="11" fontWeight="bold">{score}</text>
+      <text x="28" y="33" textAnchor="middle" fill={color} fontSize="11" fontWeight="bold">{label ?? score}</text>
     </svg>
   );
+}
+
+function ProjectHealthRing({ projectId }: { projectId: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["architecture-score", projectId],
+    queryFn: () => analysisAPI.architecture(projectId),
+    staleTime: Infinity,
+    retry: false,
+  });
+
+  const score = data?.data?.data?.overall_health_score ?? null;
+
+  if (isLoading) {
+    return (
+      <div style={{ opacity: 0.4, transition: "opacity 0.5s ease" }}>
+        <HealthRing score={0} label="…" />
+      </div>
+    );
+  }
+
+  return <HealthRing score={score ?? 0} label={score === null ? "?" : String(score)} />;
 }
 
 export default function DashboardPage() {
@@ -185,7 +206,7 @@ export default function DashboardPage() {
                       >
                         🗑️
                       </button>
-                      {p.status === "ready" && <HealthRing score={70} />}
+                      {p.status === "ready" && <ProjectHealthRing projectId={p.id} />}
                       {p.status === "processing" && <span style={{ fontSize: "var(--text-xs)", color: "var(--color-warning)", background: "var(--color-warning-highlight)", padding: "2px 8px", borderRadius: "var(--radius-full)" }}>Processing</span>}
                       {p.status === "failed" && <span style={{ fontSize: "var(--text-xs)", color: "var(--color-error)", background: "var(--color-error-highlight)", padding: "2px 8px", borderRadius: "var(--radius-full)" }}>Failed</span>}
                       {p.status === "pending" && <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)", background: "var(--color-surface-offset)", padding: "2px 8px", borderRadius: "var(--radius-full)" }}>Pending</span>}
