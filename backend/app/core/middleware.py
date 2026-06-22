@@ -47,7 +47,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         if path.startswith("/api/v1/analysis"):
-            limit, window, category = 20, 60, "analysis"
+            limit, window, category = 100, 60, "analysis"
         elif path.startswith("/api/v1/query"):
             limit, window, category = 60, 60, "query"
         elif path.startswith("/api/v1/ingest"):

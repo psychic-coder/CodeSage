@@ -17,6 +17,10 @@ from app.database.postgres import init_db
 
 app = FastAPI(title="CodeSage API", version="1.0.0", docs_url="/docs")
 
+# Logging and rate limiting
+app.add_middleware(LoggingMiddleware)
+app.add_middleware(RateLimitMiddleware)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins.split(","),
@@ -24,10 +28,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Logging and rate limiting
-app.add_middleware(LoggingMiddleware)
-app.add_middleware(RateLimitMiddleware)
 
 app.add_exception_handler(CodeSageException, codesage_exception_handler)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)

@@ -138,11 +138,11 @@ function DirNode({ data }: { data: any }) {
   );
 }
 
-const nodeTypes: NodeTypes = { file: FileNode, dir: DirNode };
+const nodeTypes = { file: FileNode, dir: DirNode };
 
 const getLayoutedElements = (
-  nodes: Node[],
-  edges: Edge[],
+  nodes: any[],
+  edges: any[],
   direction: string = "TB",
 ) => {
   const dagreGraph = new dagre.graphlib.Graph();
@@ -324,8 +324,8 @@ function GraphPageContent() {
 
   // Handle Grouping and Layout
   const { nodes: flowNodes, edges: flowEdges } = useMemo(() => {
-    let finalNodes: Node[] = [];
-    let finalEdges: Edge[] = [];
+    let finalNodes: any[] = [];
+    let finalEdges: any[] = [];
 
     if (groupByDir) {
       const dirMap = new Map<string, GraphNode[]>();
@@ -424,14 +424,19 @@ function GraphPageContent() {
           style: {
             stroke: "var(--color-border)",
             strokeOpacity: heatmapMode ? 0.8 : 0.5,
+            strokeWidth: 1.5
           },
-          animated: false,
-          markerEnd: {
-            type: "arrowclosed" as any,
-            color: "var(--color-border)",
-          },
+          animated: true,
         }));
     }
+
+    // Deduplicate edges
+    const seenEdges = new Set<string>();
+    finalEdges = finalEdges.filter((e) => {
+      if (seenEdges.has(e.id)) return false;
+      seenEdges.add(e.id);
+      return true;
+    });
 
     return getLayoutedElements(finalNodes, finalEdges, layoutDir);
   }, [
@@ -440,16 +445,14 @@ function GraphPageContent() {
     layoutDir,
     groupByDir,
     expandedDirs,
-    neighborhoodPaths,
-    heatmapMode,
-    impactedPaths,
-    cyclePaths,
-    isolatedPaths,
+    selectedNode,
   ]);
 
-  // Re-center when layout changes significantly
+  // Handle auto-fit on load
   useEffect(() => {
-    setTimeout(() => fitView({ duration: 600, padding: 0.2 }), 50);
+    if (flowNodes.length > 0 && !fitView.current) {
+      setTimeout(() => fitView.current?.(), 100);
+    }
   }, [flowNodes.length, layoutDir, groupByDir, expandedDirs.size, fitView]);
 
   const languages = useMemo(
@@ -465,7 +468,7 @@ function GraphPageContent() {
     return paths;
   };
 
-  const handleNodeClick = async (_: any, node: Node) => {
+  const handleNodeClick = async (_: any, node: any) => {
     if (node.type === "dir") {
       setExpandedDirs((prev) => {
         const next = new Set(prev);

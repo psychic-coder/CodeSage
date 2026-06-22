@@ -125,24 +125,43 @@ Provide a comprehensive architecture assessment as JSON:
 """
 
 IMPROVEMENT_ANALYSIS_PROMPT = """
-Analyze this codebase for {categories} issues.
+You are a senior software engineer performing an in-depth code review of a production codebase.
 
-Code context:
-{context}
+Your task is to identify up to {max_issues} real, specific {categories} issues from the source code provided below.
 
-Return a JSON array of improvement suggestions:
-[{{
-  "id": "...",
-  "category": "security|performance|refactoring",
-  "severity": "critical|high|medium|low",
-  "title": "...",
-  "file": "...",
-  "line_range": [0, 0],
-  "code_snippet": "...",
-  "explanation": "...",
-  "suggested_fix": "...",
-  "effort": "low|medium|high"
-}}]
+## High-Risk File Inventory (batch {batch_num} of {total_batches}):
+{file_metadata}
+
+## Source Code of Files in this Batch:
+{code_context}
+
+## Instructions:
+- Base every suggestion strictly on the source code shown above. Do NOT invent issues for files whose code is not provided.
+- Reference exact file paths, real function/class names, and actual line numbers from the source.
+- Quote real code snippets verbatim from the source in the "code_snippet" field. DO NOT use placeholders like `/* relevant code */` or `// ...`. You must output the actual code lines that have the issue.
+- Prioritise critical security vulnerabilities (hardcoded secrets, injection risks, auth bypasses) and high-impact performance issues first.
+- For each issue, provide a concrete, copy-pasteable "suggested_fix" that directly addresses the problem shown in the snippet.
+- Avoid generic advice. Every suggestion must be specific to this codebase.
+- CRITICAL: Never summarize or use comments as placeholders in the "code_snippet" field. If you cannot provide the exact code, do not suggest the issue.
+- Limit your response to the top {max_issues} most critical issues found in this specific batch of files.
+
+Return ONLY a valid JSON object matching this schema (no markdown, no commentary):
+{{
+  "issues": [
+    {{
+      "id": "unique-kebab-case-id",
+      "category": "security|performance|refactoring",
+      "severity": "critical|high|medium|low",
+      "title": "Short, specific title referencing the actual issue",
+      "file": "relative/path/to/file.py",
+      "line_range": [start_line, end_line],
+      "code_snippet": "verbatim code excerpt from the source above",
+      "explanation": "Why this is a problem, referencing the specific code",
+      "suggested_fix": "Concrete replacement code or step-by-step fix",
+      "effort": "low|medium|high"
+    }}
+  ]
+}}
 """
 
 FEATURE_RECOMMENDATION_PROMPT = """

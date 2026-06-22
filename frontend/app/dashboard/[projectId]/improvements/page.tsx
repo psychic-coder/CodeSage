@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -20,6 +20,8 @@ import {
   Clock,
   AlertTriangle,
 } from "lucide-react";
+import { useStreamingImprovements } from "@/hooks/useStreamingImprovements";
+import { ImprovementsLoader } from "@/components/improvements/ImprovementsLoader";
 
 // ────────────────────────────────────────────────────
 // Helpers
@@ -553,6 +555,14 @@ export default function ImprovementsPage() {
   >("improvements");
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  const {
+    issues: streamedImprovements,
+    status: streamStatus,
+    progress: streamProgress,
+    startStream,
+    reset: resetStream
+  } = useStreamingImprovements(projectId, category);
+
   const improvementsQuery = useQuery({
     queryKey: ["improvements", projectId, category],
     queryFn: () => analysisAPI.improvements(projectId, category || undefined),
@@ -563,10 +573,21 @@ export default function ImprovementsPage() {
   });
 
   const improvements: any[] = useMemo(() => {
+    if (streamedImprovements.length > 0 || streamStatus === "streaming" || streamStatus === "done") {
+      return streamedImprovements;
+    }
     const data =
       improvementsQuery.data?.data?.data ?? improvementsQuery.data?.data ?? [];
     return Array.isArray(data) ? data : (data.improvements ?? data.items ?? []);
-  }, [improvementsQuery.data]);
+  }, [improvementsQuery.data, streamedImprovements, streamStatus]);
+
+  // Trigger stream if not cached
+  useEffect(() => {
+    const response = improvementsQuery.data?.data;
+    if (improvementsQuery.isSuccess && response?.cached === false && streamStatus === "idle") {
+      startStream();
+    }
+  }, [improvementsQuery.isSuccess, improvementsQuery.data, streamStatus, startStream]);
 
   const recommendations: any[] = useMemo(() => {
     const data =
@@ -617,13 +638,12 @@ export default function ImprovementsPage() {
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
-      await queryClient.invalidateQueries({
-        queryKey: ["improvements", projectId],
-      });
+      resetStream();
       await queryClient.invalidateQueries({
         queryKey: ["recommendations", projectId],
       });
-      await improvementsQuery.refetch();
+      // Skip invalidating improvements because we stream it directly
+      startStream();
       await recommendationsQuery.refetch();
     } finally {
       setIsRefreshing(false);
@@ -946,7 +966,7 @@ export default function ImprovementsPage() {
           </div>
 
           {/* Card List */}
-          {improvementsQuery.isLoading ? (
+          {improvementsQuery.isLoading && streamStatus === "idle" ? (
             <div
               style={{
                 display: "flex",
@@ -962,6 +982,12 @@ export default function ImprovementsPage() {
                 />
               ))}
             </div>
+          ) : streamStatus === "streaming" && filteredImprovements.length === 0 ? (
+            <ImprovementsLoader 
+              batch={streamProgress.batch} 
+              totalBatches={streamProgress.totalBatches}
+              itemsFound={0} 
+            />
           ) : filteredImprovements.length > 0 ? (
             <div
               style={{
@@ -970,6 +996,15 @@ export default function ImprovementsPage() {
                 gap: "var(--space-4)",
               }}
             >
+              {streamStatus === "streaming" && (
+                <div style={{ marginBottom: "var(--space-4)" }}>
+                   <ImprovementsLoader 
+                      batch={streamProgress.batch} 
+                      totalBatches={streamProgress.totalBatches}
+                      itemsFound={filteredImprovements.length} 
+                   />
+                </div>
+              )}
               {filteredImprovements.map((item: any, index: number) => {
                 const id = item.id ?? `${item.file}-${item.title}-${index}`;
                 return (
@@ -988,7 +1023,7 @@ export default function ImprovementsPage() {
               className="panel pad"
               style={{ textAlign: "center", color: "var(--color-text-muted)" }}
             >
-              No improvements match the selected filters.
+              {streamStatus === "error" ? "An error occurred while fetching improvements." : "No improvements match the selected filters."}
             </div>
           )}
         </div>
