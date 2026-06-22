@@ -140,18 +140,71 @@ async def improvements(
     cu=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    from app.services.intelligence.improvement_suggester import suggest_improvements
+    cats = categories.split(",") if categories else None
+    qhash = hashlib.sha256(f"{project_id}:improvements:{categories}".encode()).hexdigest()
+    
+    stmt = select(AnalysisCache).where(
+        AnalysisCache.project_id == project_id,
+        AnalysisCache.query_hash == qhash,
+    )
+    row = (await db.execute(stmt)).scalar_one_or_none()
+    
+    if row and (row.expires_at is None or row.expires_at > datetime.utcnow()):
+        return AnalysisResponse(data=json.loads(row.result_json), cached=True)
+    
+    return AnalysisResponse(data=[], cached=False)
+
+
+from fastapi.responses import StreamingResponse
+
+@router.get("/improvements/{project_id}/stream")
+async def improvements_stream(
+    project_id: str,
+    categories: str = "",
+    cu=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.services.intelligence.improvement_suggester import suggest_improvements_batched
 
     cats = categories.split(",") if categories else None
-    data, cached = await _cached(
-        db,
-        project_id,
-        "improvements",
-        f"improvements:{categories}",
-        lambda: suggest_improvements(project_id, cats),
-        ttl_hours=24
+
+    async def event_generator():
+        all_issues = []
+        try:
+            async for chunk in suggest_improvements_batched(project_id, cats):
+                if chunk["type"] == "batch":
+                    all_issues.extend(chunk.get("issues", []))
+                
+                # Yield SSE event
+                yield f"data: {json.dumps(chunk)}\n\n"
+            
+            # After all chunks are done, cache the final aggregated result
+            if all_issues:
+                qhash = hashlib.sha256(f"{project_id}:improvements:{categories}".encode()).hexdigest()
+                db.add(
+                    AnalysisCache(
+                        project_id=project_id,
+                        query_hash=qhash,
+                        query_type="improvements",
+                        query_text=f"improvements:{categories}",
+                        result_json=json.dumps(all_issues),
+                        expires_at=datetime.utcnow() + timedelta(hours=24),
+                    )
+                )
+                await db.commit()
+                
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return StreamingResponse(
+        event_generator(), 
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
     )
-    return AnalysisResponse(data=data, cached=cached)
 
 
 @router.get("/recommendations/{project_id}", response_model=AnalysisResponse)

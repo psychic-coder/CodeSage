@@ -116,18 +116,18 @@ const FileNode = ({ data }: { data: GraphNode & { label: string } }) => {
   );
 };
 
-const nodeTypes: NodeTypes = { file: FileNode };
+const nodeTypes = { file: FileNode };
 
 /* ── Layout helper – simple layered layout ──────────────────────────────────── */
 function buildLayout(
   rawNodes: GraphNode[],
   rawEdges: GraphEdge[]
-): { flowNodes: Node[]; flowEdges: Edge[] } {
+): { flowNodes: any[]; flowEdges: any[] } {
   const COL_WIDTH = 220;
   const ROW_HEIGHT = 110;
   const PER_ROW = Math.max(4, Math.ceil(Math.sqrt(rawNodes.length)));
 
-  const flowNodes: Node[] = rawNodes.map((n, i) => ({
+  const flowNodes: any[] = rawNodes.map((n, i) => ({
     id: n.path,
     type: "file",
     position: {
@@ -137,7 +137,7 @@ function buildLayout(
     data: { ...n, label: n.path.split("/").pop() ?? n.path },
   }));
 
-  const flowEdges: Edge[] = rawEdges.map((e, i) => ({
+  const flowEdges: any[] = rawEdges.map((e, i) => ({
     id: `e-${i}`,
     source: e.source,
     target: e.target,
@@ -167,7 +167,7 @@ export default function DependencyGraph({
   );
 
   const handleNodeClick = useCallback(
-    (_: React.MouseEvent, node: Node) => {
+    (_: React.MouseEvent, node: any) => {
       onNodeClick?.(node.data as GraphNode);
     },
     [onNodeClick]
@@ -229,7 +229,7 @@ export default function DependencyGraph({
           color="rgba(255,255,255,0.04)"
         />
         <MiniMap
-          nodeColor={(n) => riskColour((n.data as GraphNode).risk_score ?? 0)}
+          nodeColor={(n: any) => riskColour((n.data as GraphNode).risk_score ?? 0)}
           style={{ background: "var(--color-surface)", borderRadius: 8 }}
           maskColor="rgba(0,0,0,0.4)"
         />

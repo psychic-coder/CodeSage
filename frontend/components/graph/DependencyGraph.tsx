@@ -26,19 +26,19 @@ function FileNode({ data }: { data: GraphNode }) {
   );
 }
 
-const nodeTypes: NodeTypes = { file: FileNode as never };
+const nodeTypes = { file: FileNode as never };
 
 export default function DependencyGraph({ nodes, edges }: Props) {
   const [selected, setSelected] = useState<GraphNode | null>(null);
 
-  const flowNodes: Node[] = useMemo(() => nodes.map((node, index) => ({
+  const flowNodes: any[] = useMemo(() => nodes.map((node, index) => ({
     id: node.path,
     type: "file",
     position: { x: (index % 4) * 220, y: Math.floor(index / 4) * 140 },
     data: node,
   })), [nodes]);
 
-  const flowEdges: Edge[] = useMemo(() => edges.map((edge, index) => ({
+  const flowEdges: any[] = useMemo(() => edges.map((edge, index) => ({
     id: `${edge.source}-${edge.target}-${index}`,
     source: edge.source,
     target: edge.target,
@@ -53,9 +53,9 @@ export default function DependencyGraph({ nodes, edges }: Props) {
           edges={flowEdges}
           nodeTypes={nodeTypes}
           fitView
-          onNodeClick={(_, node) => setSelected(nodes.find((item) => item.path === node.id) ?? null)}
+          onNodeClick={(_: any, node: any) => setSelected(nodes.find((item) => item.path === node.id) ?? null)}
         >
-          <MiniMap nodeColor={(node) => riskColor((node.data as GraphNode).risk_score || 0)} />
+          <MiniMap nodeColor={(node: any) => riskColor((node.data as GraphNode).risk_score || 0)} />
           <Controls />
           <Background />
         </ReactFlow>
