@@ -31,3 +31,5 @@ dist/
 build/
 *.tgz
 *.zip
+*.egg-info/
+*.egg
