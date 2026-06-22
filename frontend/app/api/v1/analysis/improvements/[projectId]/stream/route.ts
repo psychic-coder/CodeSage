@@ -28,6 +28,7 @@ export async function GET(
     });
 
     if (!backendResponse.ok || !backendResponse.body) {
+      console.error("Backend stream returned error status:", backendResponse.status, backendUrl);
       return new Response(
         JSON.stringify({ error: `Backend returned ${backendResponse.status}` }),
         {
@@ -48,6 +49,7 @@ export async function GET(
       },
     });
   } catch (err: any) {
+    console.error("Proxy route crashed:", err, backendUrl);
     return new Response(
       JSON.stringify({ error: err.message || "Proxy failed" }),
       { status: 500, headers: { "Content-Type": "application/json" } }

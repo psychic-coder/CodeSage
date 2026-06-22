@@ -7,7 +7,7 @@ interface StreamingProgress {
   totalBatches: number;
 }
 
-export function useStreamingImprovements(projectId: string, category: string = "") {
+export function useStreamingImprovements(projectId: string) {
   const [issues, setIssues] = useState<any[]>([]);
   const [status, setStatus] = useState<StreamStatus>("idle");
   const [progress, setProgress] = useState<StreamingProgress>({ batch: 0, totalBatches: 0 });
@@ -42,7 +42,6 @@ export function useStreamingImprovements(projectId: string, category: string = "
     const fetchStream = async () => {
       try {
         const queryParams = new URLSearchParams();
-        if (category) queryParams.append("categories", category);
         
         const response = await fetch(`${url}?${queryParams.toString()}`, {
           headers: {
@@ -121,7 +120,7 @@ export function useStreamingImprovements(projectId: string, category: string = "
     return () => {
       controller.abort();
     };
-  }, [projectId, category, status]);
+  }, [projectId, status]);
 
   const reset = useCallback(() => {
     setIssues([]);
@@ -129,6 +128,11 @@ export function useStreamingImprovements(projectId: string, category: string = "
     setProgress({ batch: 0, totalBatches: 0 });
     setError(null);
   }, []);
+
+  
+  useEffect(() => {
+    reset();
+  }, [projectId, reset]);
 
   return { issues, status, progress, error, startStream, reset };
 }

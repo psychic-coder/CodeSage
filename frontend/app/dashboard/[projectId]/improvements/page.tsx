@@ -561,11 +561,11 @@ export default function ImprovementsPage() {
     progress: streamProgress,
     startStream,
     reset: resetStream
-  } = useStreamingImprovements(projectId, category);
+  } = useStreamingImprovements(projectId);
 
   const improvementsQuery = useQuery({
-    queryKey: ["improvements", projectId, category],
-    queryFn: () => analysisAPI.improvements(projectId, category || undefined),
+    queryKey: ["improvements", projectId],
+    queryFn: () => analysisAPI.improvements(projectId),
   });
   const recommendationsQuery = useQuery({
     queryKey: ["recommendations", projectId],
@@ -605,6 +605,9 @@ export default function ImprovementsPage() {
 
   const filteredImprovements = useMemo(() => {
     let list = [...improvements];
+    if (category) {
+      list = list.filter((i) => i.category?.toLowerCase() === category.toLowerCase());
+    }
     if (severityFilter !== "all") {
       list = list.filter((i) => i.severity?.toLowerCase() === severityFilter);
     }
@@ -624,7 +627,7 @@ export default function ImprovementsPage() {
       );
     });
     return list;
-  }, [improvements, severityFilter, effortFilter, sortBy]);
+  }, [improvements, category, severityFilter, effortFilter, sortBy]);
 
   const toggleCard = (id: string) => {
     setExpandedIds((prev) => {
