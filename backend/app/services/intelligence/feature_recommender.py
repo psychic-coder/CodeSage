@@ -67,11 +67,11 @@ async def recommend_features(project_id: str) -> dict:
     node_count = stats.get("node_count", 0)
     edge_count = stats.get("edge_count", 0)
     arch_summary = f"Top files: {[file_info['path'] for file_info in stats.get('top_files', [])[:5]]}. Total nodes: {node_count}, Total edges: {edge_count}."
-    
+
     # Fetch more nodes for a better feature inference (up to 200 nodes, 2 pages)
     nodes = await get_graph_nodes(project_id, limit=100, skip=0)
     nodes.extend(await get_graph_nodes(project_id, limit=100, skip=100))
-    
+
     existing_features = _infer_features_from_nodes(nodes)
 
     try:

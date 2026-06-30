@@ -2,11 +2,11 @@ from fastapi import APIRouter, Depends
 
 from app.core.auth import get_current_user
 from app.services.graph.graph_queries import (
+    get_circular_deps,
     get_graph_edges,
     get_graph_nodes,
     get_graph_stats,
     get_subgraph,
-    get_circular_deps,
 )
 
 router = APIRouter()

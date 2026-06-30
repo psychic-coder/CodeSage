@@ -91,14 +91,14 @@ async def suggest_improvements_batched(
 
     # We only process the top _CODE_CONTEXT_FILES nodes
     top_code_nodes = top_nodes[:_CODE_CONTEXT_FILES]
-    
+
     # Split into batches
     batches = [
         top_code_nodes[i : i + BATCH_SIZE]
         for i in range(0, len(top_code_nodes), BATCH_SIZE)
     ]
     total_batches = len(batches)
-    
+
     seen_issues = set()
     total_found = 0
 
@@ -136,7 +136,7 @@ async def suggest_improvements_batched(
                 max_tokens=800,  # much smaller response limit
                 retries=2,
             )
-            
+
             issues = []
             if isinstance(result, list):
                 issues = result
@@ -161,8 +161,8 @@ async def suggest_improvements_batched(
 
         except Exception as e:
             logger.error(
-                "llm_batch_synthesis_failed", 
-                error=str(e), 
+                "llm_batch_synthesis_failed",
+                error=str(e),
                 batch=batch_num,
                 project_id=project_id
             )
@@ -172,7 +172,7 @@ async def suggest_improvements_batched(
                 "total_batches": total_batches,
                 "issues": [],
             }
-            
+
     yield {
         "type": "done",
         "total": total_found

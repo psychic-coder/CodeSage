@@ -9,7 +9,6 @@ there are zero changes to how the app runs locally.
 """
 from __future__ import annotations
 
-import logging
 import os
 
 import structlog
@@ -28,9 +27,12 @@ def setup_telemetry() -> None:
         # azure-monitor-opentelemetry configures the OTEL SDK and exports to
         # Application Insights in a single call.
         from azure.monitor.opentelemetry import configure_azure_monitor  # type: ignore
-        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor  # type: ignore
-        from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor  # type: ignore
-        from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor  # type: ignore
+        from opentelemetry.instrumentation.httpx import (
+            HTTPXClientInstrumentor,  # type: ignore
+        )
+        from opentelemetry.instrumentation.sqlalchemy import (
+            SQLAlchemyInstrumentor,  # type: ignore
+        )
 
         configure_azure_monitor(connection_string=cs)
 
@@ -61,7 +63,9 @@ def instrument_fastapi(app) -> None:  # noqa: ANN001
     if not cs:
         return
     try:
-        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor  # type: ignore
+        from opentelemetry.instrumentation.fastapi import (
+            FastAPIInstrumentor,  # type: ignore
+        )
 
         FastAPIInstrumentor.instrument_app(app)
         logger.info("telemetry.fastapi_instrumented")

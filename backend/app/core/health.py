@@ -48,8 +48,9 @@ async def readiness():
 
     # Postgres
     try:
-        from app.database.postgres import engine
         from sqlalchemy import text
+
+        from app.database.postgres import engine
 
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
