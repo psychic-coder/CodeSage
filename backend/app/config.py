@@ -9,10 +9,12 @@ class Settings(BaseSettings):
     allowed_origins: str = "http://localhost:3000"
 
     database_url: str = "postgresql+asyncpg://user:pass@localhost:5432/codesage"
+    alembic_database_url: str = ""  # sync psycopg2 URL for alembic CLI; falls back to database_url
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = "neo4j"
     neo4j_password: str = "password"
     qdrant_url: str = "http://localhost:6333"
+    qdrant_api_key: str = ""  # required for Qdrant Cloud; blank for local
     redis_url: str = "redis://localhost:6379/0"
 
     minio_endpoint: str = "localhost:9000"

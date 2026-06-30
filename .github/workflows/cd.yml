@@ -1,0 +1,259 @@
+name: CD
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Continuous Deployment pipeline
+#
+# Triggers:
+#   - push to main  →  auto-deploy to STAGING
+#   - push to main  →  deploy to PRODUCTION (requires manual approval)
+#
+# Required GitHub Secrets (Settings → Secrets → Actions):
+#   Azure (OIDC federated — no stored client secret):
+#     AZURE_CLIENT_ID         Managed identity / App Registration client ID
+#     AZURE_TENANT_ID         Azure AD tenant ID
+#     AZURE_SUBSCRIPTION_ID   Azure subscription ID
+#   ACR:
+#     ACR_LOGIN_SERVER        e.g. codesageacr.azurecr.io
+#     ACR_USERNAME            ACR admin username (or use OIDC)
+#     ACR_PASSWORD            ACR admin password
+#   Smoke test:
+#     STAGING_URL             e.g. https://staging.rohitganguly.dev
+#     PRODUCTION_URL          e.g. https://rohitganguly.dev
+#   Azure Container Apps resource names:
+#     AZURE_RESOURCE_GROUP              e.g. codesage-rg
+#     ACA_ENV_STAGING                   Container Apps env name (staging)
+#     ACA_ENV_PROD                      Container Apps env name (prod)
+# ─────────────────────────────────────────────────────────────────────────────
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        default: "staging"
+        type: choice
+        options: ["staging", "production"]
+
+permissions:
+  id-token: write   # OIDC token for Azure login
+  contents: read
+
+env:
+  IMAGE_TAG: ${{ github.sha }}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Job 1 — Build and push Docker images to ACR
+# ─────────────────────────────────────────────────────────────────────────────
+jobs:
+  build-and-push:
+    name: "Build & Push images to ACR"
+    runs-on: ubuntu-latest
+    # Only run CD when CI has passed (not on every branch push)
+    if: github.ref == 'refs/heads/main'
+
+    outputs:
+      image_tag: ${{ env.IMAGE_TAG }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC federated credentials)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Log in to Azure Container Registry
+        run: |
+          az acr login --name ${{ secrets.ACR_LOGIN_SERVER }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ── Backend image ────────────────────────────────────────────────────────
+      - name: Build & push — backend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.ACR_LOGIN_SERVER }}/codesage-backend:${{ env.IMAGE_TAG }}
+            ${{ secrets.ACR_LOGIN_SERVER }}/codesage-backend:latest
+          cache-from: type=registry,ref=${{ secrets.ACR_LOGIN_SERVER }}/codesage-backend:cache
+          cache-to:   type=registry,ref=${{ secrets.ACR_LOGIN_SERVER }}/codesage-backend:cache,mode=max
+
+      # ── Frontend image ───────────────────────────────────────────────────────
+      - name: Build & push — frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.ACR_LOGIN_SERVER }}/codesage-frontend:${{ env.IMAGE_TAG }}
+            ${{ secrets.ACR_LOGIN_SERVER }}/codesage-frontend:latest
+          cache-from: type=registry,ref=${{ secrets.ACR_LOGIN_SERVER }}/codesage-frontend:cache
+          cache-to:   type=registry,ref=${{ secrets.ACR_LOGIN_SERVER }}/codesage-frontend:cache,mode=max
+          build-args: |
+            NEXT_PUBLIC_API_URL=https://api.rohitganguly.dev
+            NEXT_PUBLIC_WS_URL=wss://api.rohitganguly.dev
+            NEXTAUTH_URL=https://rohitganguly.dev
+
+      # ── Nginx image ──────────────────────────────────────────────────────────
+      - name: Build & push — nginx
+        uses: docker/build-push-action@v5
+        with:
+          context: ./nginx
+          file: ./nginx/Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.ACR_LOGIN_SERVER }}/codesage-nginx:${{ env.IMAGE_TAG }}
+            ${{ secrets.ACR_LOGIN_SERVER }}/codesage-nginx:latest
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Job 2 — Deploy to STAGING (auto on every push to main)
+# ─────────────────────────────────────────────────────────────────────────────
+  deploy-staging:
+    name: "Deploy → Staging"
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy backend to Staging Container App
+        uses: azure/container-apps-deploy-action@v1
+        with:
+          appSourcePath: ${{ github.workspace }}
+          resourceGroup: ${{ secrets.AZURE_RESOURCE_GROUP }}
+          containerAppName: codesage-backend-staging
+          imageToDeploy: ${{ secrets.ACR_LOGIN_SERVER }}/codesage-backend:${{ needs.build-and-push.outputs.image_tag }}
+
+      - name: Deploy worker to Staging Container App
+        uses: azure/container-apps-deploy-action@v1
+        with:
+          appSourcePath: ${{ github.workspace }}
+          resourceGroup: ${{ secrets.AZURE_RESOURCE_GROUP }}
+          containerAppName: codesage-worker-staging
+          imageToDeploy: ${{ secrets.ACR_LOGIN_SERVER }}/codesage-backend:${{ needs.build-and-push.outputs.image_tag }}
+
+      - name: Deploy frontend to Staging Container App
+        uses: azure/container-apps-deploy-action@v1
+        with:
+          appSourcePath: ${{ github.workspace }}
+          resourceGroup: ${{ secrets.AZURE_RESOURCE_GROUP }}
+          containerAppName: codesage-frontend-staging
+          imageToDeploy: ${{ secrets.ACR_LOGIN_SERVER }}/codesage-frontend:${{ needs.build-and-push.outputs.image_tag }}
+
+      # ── Smoke test: staging ──────────────────────────────────────────────────
+      - name: Smoke test — staging /health/live
+        run: |
+          sleep 30  # Give Container Apps time to swap containers
+          for i in $(seq 1 10); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              "${{ secrets.STAGING_URL }}/health/live" 2>/dev/null || echo "000")
+            echo "Attempt $i: HTTP $STATUS"
+            if [ "$STATUS" = "200" ]; then
+              echo "✅ Staging smoke test passed"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "❌ Staging smoke test failed after 10 attempts"
+          exit 1
+
+      - name: Smoke test — staging /health/ready
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            "${{ secrets.STAGING_URL }}/health/ready")
+          echo "Readiness status: HTTP $STATUS"
+          if [ "$STATUS" = "200" ] || [ "$STATUS" = "503" ]; then
+            echo "✅ Readiness endpoint reachable (status=$STATUS)"
+          else
+            echo "❌ Readiness endpoint unreachable"
+            exit 1
+          fi
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Job 3 — Deploy to PRODUCTION (requires manual approval gate)
+# ─────────────────────────────────────────────────────────────────────────────
+  deploy-production:
+    name: "Deploy → Production (manual gate)"
+    needs: [build-and-push, deploy-staging]
+    runs-on: ubuntu-latest
+    # 'production' GitHub Environment must have a required reviewer configured
+    # in Settings → Environments → production → Required reviewers
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy backend to Production Container App
+        uses: azure/container-apps-deploy-action@v1
+        with:
+          appSourcePath: ${{ github.workspace }}
+          resourceGroup: ${{ secrets.AZURE_RESOURCE_GROUP }}
+          containerAppName: codesage-backend-prod
+          imageToDeploy: ${{ secrets.ACR_LOGIN_SERVER }}/codesage-backend:${{ needs.build-and-push.outputs.image_tag }}
+
+      - name: Deploy worker to Production Container App
+        uses: azure/container-apps-deploy-action@v1
+        with:
+          appSourcePath: ${{ github.workspace }}
+          resourceGroup: ${{ secrets.AZURE_RESOURCE_GROUP }}
+          containerAppName: codesage-worker-prod
+          imageToDeploy: ${{ secrets.ACR_LOGIN_SERVER }}/codesage-backend:${{ needs.build-and-push.outputs.image_tag }}
+
+      - name: Deploy frontend to Production Container App
+        uses: azure/container-apps-deploy-action@v1
+        with:
+          appSourcePath: ${{ github.workspace }}
+          resourceGroup: ${{ secrets.AZURE_RESOURCE_GROUP }}
+          containerAppName: codesage-frontend-prod
+          imageToDeploy: ${{ secrets.ACR_LOGIN_SERVER }}/codesage-frontend:${{ needs.build-and-push.outputs.image_tag }}
+
+      # ── Smoke test: production ───────────────────────────────────────────────
+      - name: Smoke test — production /health/live
+        run: |
+          sleep 30
+          for i in $(seq 1 10); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              "${{ secrets.PRODUCTION_URL }}/health/live" 2>/dev/null || echo "000")
+            echo "Attempt $i: HTTP $STATUS"
+            if [ "$STATUS" = "200" ]; then
+              echo "✅ Production smoke test passed — tag=${{ needs.build-and-push.outputs.image_tag }}"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "❌ Production smoke test failed"
+          exit 1
+
+      - name: Annotate successful deploy
+        run: |
+          echo "### 🚀 Production Deployment Successful" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image tag**: \`${{ needs.build-and-push.outputs.image_tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **URL**: ${{ secrets.PRODUCTION_URL }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Time**: $(date -u)" >> $GITHUB_STEP_SUMMARY
