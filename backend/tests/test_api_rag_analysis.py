@@ -29,12 +29,17 @@ if 'app.config' not in sys.modules:
     sys.modules['app.config'] = mod
 
 # Stub heavy external modules used by retriever/vector store/neo4j
+if 'app.services.embeddings' not in sys.modules:
+    sys.modules['app.services.embeddings'] = types.ModuleType('app.services.embeddings')
+
 if 'app.services.embeddings.vector_store' not in sys.modules:
     vs = types.ModuleType('app.services.embeddings.vector_store')
     async def search_similar(pid, vector, top_k=20):
         return [{"file_path": "a.py", "score": 0.8, "code": "def a(): pass"}]
     vs.search_similar = search_similar
+    vs.fetch_chunks_for_files = None  # Add attribute so other tests can monkeypatch it
     sys.modules['app.services.embeddings.vector_store'] = vs
+    sys.modules['app.services.embeddings'].vector_store = vs
 
 if 'app.database.neo4j' not in sys.modules:
     modn = types.ModuleType('app.database.neo4j')

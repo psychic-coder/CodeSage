@@ -3,7 +3,8 @@ import json
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import select, delete
+from fastapi.responses import StreamingResponse
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
@@ -22,14 +23,14 @@ router = APIRouter()
 
 async def _cached(db, project_id, query_type, query_text, fn, ttl_hours=24):
     qhash = hashlib.sha256(f"{project_id}:{query_text}".encode()).hexdigest()
-    
+
     # Only return cache if not expired
     stmt = select(AnalysisCache).where(
         AnalysisCache.project_id == project_id,
         AnalysisCache.query_hash == qhash,
     )
     row = (await db.execute(stmt)).scalar_one_or_none()
-    
+
     if row:
         if row.expires_at is None or row.expires_at > datetime.utcnow():
             return json.loads(row.result_json), True
@@ -60,17 +61,17 @@ async def impact(
     from app.services.intelligence.impact_predictor import analyze_impact
 
     desc = sanitize_user_text(req.feature_description)
-    
+
     # If it's a conversation session, do not cache
     if req.session_id:
         data = await analyze_impact(
-            req.project_id, 
-            desc, 
-            session_id=req.session_id, 
+            req.project_id,
+            desc,
+            session_id=req.session_id,
             conversation_history=req.conversation_history
         )
         return AnalysisResponse(data=data, cached=False)
-        
+
     data, cached = await _cached(
         db, req.project_id, "impact", desc, lambda: analyze_impact(req.project_id, desc), ttl_hours=12
     )
@@ -140,22 +141,22 @@ async def improvements(
     cu=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    cats = categories.split(",") if categories else None
+    # categories is used directly in the hash; the split list is not needed here
     qhash = hashlib.sha256(f"{project_id}:improvements:{categories}".encode()).hexdigest()
-    
+
     stmt = select(AnalysisCache).where(
         AnalysisCache.project_id == project_id,
         AnalysisCache.query_hash == qhash,
     )
     row = (await db.execute(stmt)).scalar_one_or_none()
-    
+
     if row and (row.expires_at is None or row.expires_at > datetime.utcnow()):
         return AnalysisResponse(data=json.loads(row.result_json), cached=True)
-    
+
     return AnalysisResponse(data=[], cached=False)
 
 
-from fastapi.responses import StreamingResponse
+
 
 @router.get("/improvements/{project_id}/stream")
 async def improvements_stream(
@@ -164,7 +165,9 @@ async def improvements_stream(
     cu=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    from app.services.intelligence.improvement_suggester import suggest_improvements_batched
+    from app.services.intelligence.improvement_suggester import (
+        suggest_improvements_batched,
+    )
 
     cats = categories.split(",") if categories else None
 
@@ -174,10 +177,10 @@ async def improvements_stream(
             async for chunk in suggest_improvements_batched(project_id, cats):
                 if chunk["type"] == "batch":
                     all_issues.extend(chunk.get("issues", []))
-                
+
                 # Yield SSE event
                 yield f"data: {json.dumps(chunk)}\n\n"
-            
+
             # After all chunks are done, cache the final aggregated result
             if all_issues:
                 qhash = hashlib.sha256(f"{project_id}:improvements:{categories}".encode()).hexdigest()
@@ -192,12 +195,12 @@ async def improvements_stream(
                     )
                 )
                 await db.commit()
-                
+
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 
     return StreamingResponse(
-        event_generator(), 
+        event_generator(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

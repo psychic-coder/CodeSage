@@ -1,0 +1,190 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# CodeSage — Production Docker Compose
+# ─────────────────────────────────────────────────────────────────────────────
+# Usage:
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Environment: set via CI/CD pipeline (values from Azure Key Vault)
+#   ACR_REGISTRY  = <acr-name>.azurecr.io
+#   IMAGE_TAG     = <git-sha>  (e.g. ghcr.io image tag / ACR tag)
+#
+# Notes:
+#   - NO source-code volume mounts (immutable containers)
+#   - NO dev ports exposed on host (only 80/443 via nginx)
+#   - Neo4j and Qdrant are managed services (AuraDB + Qdrant Cloud); NOT here
+#   - Secrets are injected as environment variables from Key Vault at deploy time
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── Backend API ─────────────────────────────────────────────────────────────
+  backend:
+    image: ${ACR_REGISTRY}/codesage-backend:${IMAGE_TAG}
+    restart: unless-stopped
+    env_file: .env.prod        # populated by CD pipeline from Key Vault
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/live"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # ── Celery Worker ────────────────────────────────────────────────────────────
+  worker:
+    image: ${ACR_REGISTRY}/codesage-backend:${IMAGE_TAG}
+    restart: unless-stopped
+    env_file: .env.prod
+    command: ["celery", "-A", "app.workers.celery_app", "worker",
+              "--loglevel=info", "--concurrency=4", "--max-tasks-per-child=100"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "celery", "-A", "app.workers.celery_app", "inspect", "ping", "-d", "celery@$$HOSTNAME"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # ── Next.js Frontend ─────────────────────────────────────────────────────────
+  frontend:
+    image: ${ACR_REGISTRY}/codesage-frontend:${IMAGE_TAG}
+    restart: unless-stopped
+    env_file: .env.prod
+    depends_on:
+      - backend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          cpus: "0.1"
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+  # ── Nginx Reverse Proxy ───────────────────────────────────────────────────────
+  nginx:
+    image: ${ACR_REGISTRY}/codesage-nginx:${IMAGE_TAG}
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    volumes:
+      # TLS certificates (managed externally — cert-manager / Azure Key Vault certs)
+      - /etc/ssl/codesage:/etc/nginx/ssl:ro
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # ── PostgreSQL ────────────────────────────────────────────────────────────────
+  # Production: use Azure Database for PostgreSQL Flexible Server instead.
+  # This service is here as a fallback for non-Azure deployments.
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: codesage
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-user} -d codesage"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+    # No host-side port exposure in production — only accessible within Docker network
+
+  # ── Redis ─────────────────────────────────────────────────────────────────────
+  # Production: use Azure Cache for Redis instead.
+  redis:
+    image: redis:7.2-alpine
+    restart: unless-stopped
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD}
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --appendonly yes
+      --save 60 1
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 512M
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
