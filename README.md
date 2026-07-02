@@ -353,7 +353,7 @@ pip install -e backend
 5) Run services locally with Docker Compose (optional):
 
 ```bash
-docker-compose up -d
+docker compose up -d
 # ensure postgres/neo4j/qdrant/redis/minio are running per .env.docker
 ```
 
