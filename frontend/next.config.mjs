@@ -36,8 +36,8 @@ const securityHeaders = [
       // Next.js inline scripts + React hydration require 'unsafe-inline' for now
       // Tighten with nonces once on Next.js 15+
       "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-      "font-src 'self' https://fonts.gstatic.com",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://api.fontshare.com https://cdn.fontshare.com",
+      "font-src 'self' https://fonts.gstatic.com https://api.fontshare.com https://cdn.fontshare.com",
       "img-src 'self' data: blob: https://avatars.githubusercontent.com",
       // Allow WS + API connections to the backend
       `connect-src 'self' ${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"} ${process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000"} https://openrouter.ai`,
